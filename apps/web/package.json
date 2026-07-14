@@ -7,7 +7,8 @@
     "dev": "NEXT_PUBLIC_LIVE_WS_URL=ws://localhost:${AGENT_PORT:-8787} next dev -p ${WEB_PORT:-3000}",
     "build": "next build",
     "start": "node server.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test auth.test.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

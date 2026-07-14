@@ -25,6 +25,8 @@ export interface ToolCall {
   name: string
   /** raw JSON string of arguments (may be partial while streaming) */
   arguments: string
+  /** Provider-specific signed thinking context required when replaying a tool call (Gemini 3). */
+  thoughtSignature?: string
 }
 
 /** An image attached to a user message (base64-encoded). */
@@ -118,7 +120,8 @@ export type ProviderEvent =
   | { type: "reasoning"; delta: string }
   /** the signed reasoning block (Anthropic) — must be replayed on later turns when tools are used */
   | { type: "reasoning_signature"; signature: string }
-  | { type: "tool_start"; index: number; id: string; name: string }
+  | { type: "tool_start"; index: number; id: string; name: string; thoughtSignature?: string }
+  | { type: "tool_signature"; index: number; signature: string }
   | { type: "tool_delta"; index: number; argsDelta: string }
   | { type: "tool_stop"; index: number }
   | { type: "usage"; input: number; output: number }

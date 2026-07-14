@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenLive Kernal Surface Plan</title>
+  <style>
+    :root { color-scheme: light; --ink:#17211b; --muted:#5f6b64; --line:#cfd7d1; --paper:#f7f8f5; --panel:#fff; --green:#1f6b45; --blue:#225d78; --amber:#9b5c12; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.55 Arial, sans-serif; letter-spacing:0; }
+    header { background:#17211b; color:#fff; padding:34px max(24px, calc((100vw - 1120px)/2)); border-bottom:5px solid #4ca878; }
+    header p { color:#c8d4cc; max-width:760px; margin:8px 0 0; }
+    h1 { margin:0; font-size:34px; line-height:1.1; letter-spacing:0; }
+    h2 { font-size:21px; margin:0 0 14px; letter-spacing:0; }
+    h3 { font-size:15px; margin:0 0 6px; letter-spacing:0; }
+    main { max-width:1120px; margin:0 auto; padding:28px 24px 48px; }
+    .meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:18px; }
+    .tag { border:1px solid #577065; padding:4px 8px; font-size:12px; color:#e7eee9; }
+    .band { padding:20px 0; border-bottom:1px solid var(--line); }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:16px; }
+    .card p { margin:0; color:var(--muted); }
+    .flow { display:grid; grid-template-columns:1fr 48px 1fr 48px 1fr; align-items:center; gap:8px; }
+    .node { min-height:112px; background:#fff; border:1px solid var(--line); border-top:4px solid var(--green); padding:16px; }
+    .arrow { text-align:center; font-size:28px; color:var(--muted); }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { border:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; }
+    th { background:#edf1ed; }
+    ul,ol { margin:8px 0 0; padding-left:22px; }
+    .guard { border-left:4px solid var(--amber); background:#fff9ef; padding:14px 16px; }
+    .decision { border-left:4px solid var(--blue); background:#f2f8fb; padding:14px 16px; }
+    code { font-family:Consolas, monospace; font-size:13px; }
+    footer { color:var(--muted); font-size:12px; padding-top:24px; }
+    @media (max-width:760px) { h1{font-size:28px}.grid{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)} }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OpenLive Kernal Surface</h1>
+    <p>A bounded voice interface for keeper status, factual graph recall, and explicitly authorized capture.</p>
+    <div class="meta"><span class="tag">Built and live-verified</span><span class="tag">CRITICON reviewed</span><span class="tag">2026-07-14</span><span class="tag">HUB #468</span><span class="tag">surface.openlive.voice</span></div>
+  </header>
+  <main>
+    <section class="band">
+      <h2>Three capabilities</h2>
+      <div class="grid">
+        <article class="card"><h3>Fleet briefing</h3><p>Read ACTIVE keepers from the registry and extract current status plus next action from each owned HUB.</p></article>
+        <article class="card"><h3>Fact recall</h3><p>Search canonical Kernal on demand and return compact, provenance-bearing results for spoken synthesis.</p></article>
+        <article class="card"><h3>Keeper action</h3><p>Prepare an immutable action, confirm it on a later turn, then log an OpenLive provenance activity.</p></article>
+      </div>
+    </section>
+    <section class="band">
+      <h2>Request path</h2>
+      <div class="flow">
+        <div class="node"><h3>Phone or browser</h3><p>Speech, camera, and streamed spoken answer.</p></div><div class="arrow">&#8594;</div>
+        <div class="node"><h3>OpenLive agent</h3><p>Behavior hydration and three bounded Kernal tools.</p></div><div class="arrow">&#8594;</div>
+        <div class="node"><h3>Canonical Kernal</h3><p>REST only, environment <code>blekkie</code>, writer <code>surface.openlive.voice</code>.</p></div>
+      </div>
+    </section>
+    <section class="band">
+      <h2>Operating contract</h2>
+      <div class="guard"><strong>OpenLive is a surface, not a keeper.</strong> Kernal stays disabled unless the single-user access gate is active. Writes require a server-owned proposal and later-turn confirmation, never dump raw transcripts, and never change passports or HUBs.</div>
+      <ul>
+        <li>Missing keeper HUB or next step is reported as a data gap, never inferred.</li>
+        <li>The entire application and WebSocket require the allowlisted Cesar identity.</li>
+        <li>Credentials remain in server configuration and never enter model prompts or tool output.</li>
+        <li>Search and bootstrap fail open; durable writes fail closed.</li>
+        <li>No paid server-side synthesis, extraction, enrichment, or classification.</li>
+      </ul>
+    </section>
+    <section class="band">
+      <h2>Latency budget</h2>
+      <table><thead><tr><th>Path</th><th>Maximum</th><th>Control</th></tr></thead><tbody>
+        <tr><td>Call bootstrap</td><td>2.5 seconds</td><td>Base persona survives failure</td></tr>
+        <tr><td>Cached keeper state</td><td>50 milliseconds</td><td>60-second registry/HUB cache</td></tr>
+        <tr><td>Fresh keeper state</td><td>4 seconds</td><td>Parallel bounded HUB reads</td></tr>
+        <tr><td>Fact recall</td><td>4 seconds</td><td>Top six graph results</td></tr>
+        <tr><td>Durable capture</td><td>6 seconds</td><td>Primary write, then activity</td></tr>
+      </tbody></table>
+    </section>
+    <section class="band">
+      <h2>Delivery gate</h2>
+      <div class="decision"><strong>CRITICON verdict absorbed.</strong> Public writes were blocked. The accepted design adds authentication, separate feature flags, later-turn confirmation, replay protection, trusted-data boundaries, and operational rollback.</div>
+      <ol><li>Access gate with Kernal off</li><li>Agent implementation and tests</li><li>Code review and fixes</li><li>Authenticated AWS read soak</li><li>One labeled confirmed write</li><li>GitHub and Kernal checkpoint</li></ol>
+    </section>
+    <section class="band">
+      <h2>As-built evidence</h2>
+      <div class="grid">
+        <article class="card"><h3>Live reads</h3><p>Keeper status and factual recall succeeded against the canonical Blekkie environment.</p></article>
+        <article class="card"><h3>Controlled write</h3><p>A two-turn smoke test created one action and one provenance activity. The disposable action was removed; the activity remains.</p></article>
+        <article class="card"><h3>Verification</h3><p>Ten focused tests, full type checking, a production build, and whitespace validation passed.</p></article>
+      </div>
+      <div class="guard"><strong>Known Kernal defect.</strong> Updating the smoke-test action returned HTTP 500. The confirmed live bug is recorded in the Kernal product backlog; real actions must not be deleted as a workaround.</div>
+    </section>
+    <footer>Canonical text: docs/plans/openlive-kernal-surface-plan.md. This HTML is the visual companion, not a separate source of truth.</footer>
+  </main>
+</body>
+</html>

@@ -4,6 +4,7 @@ import { collectTurn } from "../turn.js";
 import { buildLivePrompt } from "../prompt.js";
 import { resolveLive, resolveVision, type ResolvedLive } from "../providers.js";
 import { runWorker } from "./worker.js";
+import type { KernalVoiceSession } from "../kernal.js";
 
 type Frame = { data: string; mime: string; source?: "camera" | "screen" };
 
@@ -42,9 +43,14 @@ const LIVE_TOOL_DENY = new Set<string>([]);
 // camera frame(s) onto each user turn.
 export class LiveTurnRunner {
   private messages: Message[];
+  private turnNumber = 0;
 
-  constructor(private extraTools: TaktTool[]) {
-    this.messages = [{ role: "system", text: buildLivePrompt() }];
+  constructor(private extraTools: TaktTool[], private kernal: KernalVoiceSession | null = null) {
+    this.messages = [{ role: "system", text: buildLivePrompt("", !kernal) }];
+  }
+
+  setKernalContext(context: string) {
+    this.messages[0] = { role: "system", text: buildLivePrompt(context, !this.kernal) };
   }
 
   /** Seed prior conversation (text only) after the system prompt — used on
@@ -62,7 +68,11 @@ export class LiveTurnRunner {
     try { resolved = resolveLive(); } catch { return; }
     const { provider, model, apiKey } = resolved;
     if (!model || (!apiKey && !provider.keyless)) return;
-    const tools = [...buildTaktTools({ emit: async () => {} }), ...this.extraTools].filter((t) => !LIVE_TOOL_DENY.has(t.name));
+    const tools = [
+      ...buildTaktTools({ emit: async () => {}, includeRemember: !this.kernal }),
+      ...(this.kernal?.buildTools({ emit: async () => {}, userText: "", turnNumber: this.turnNumber }) ?? []),
+      ...this.extraTools,
+    ].filter((t) => !LIVE_TOOL_DENY.has(t.name));
     const toolDefs = tools.map(({ name, description, parameters }) => ({ name, description, parameters }));
     try {
       // maxTokens:1 — we only want the prefill (cache write); the output is discarded.
@@ -84,6 +94,7 @@ export class LiveTurnRunner {
   }
 
   async runTurn(userText: string, frames: { data: string; mime: string; source?: "camera" | "screen" }[], emit: Emit, signal: AbortSignal): Promise<void> {
+    this.turnNumber++;
     const { provider, model, apiKey, effort } = resolveLive();
     if (!model) { await emit({ type: "error", message: "No model selected. Open Settings and pick a provider + model." }); return; }
     if (!apiKey && !provider.keyless) { await emit({ type: "error", message: `No API key for ${provider.name}. Add one in Settings.` }); return; }
@@ -118,7 +129,11 @@ export class LiveTurnRunner {
 
     // Build tools with THIS turn's emit + signal so their events are dropped by the
     // same epoch guard when a barge-in interrupts. `runWorker` powers `delegate`.
-    const tools = [...buildTaktTools({ emit, signal, runWorker }), ...this.extraTools]
+    const tools = [
+      ...buildTaktTools({ emit, signal, runWorker, includeRemember: !this.kernal }),
+      ...(this.kernal?.buildTools({ emit, userText, turnNumber: this.turnNumber }) ?? []),
+      ...this.extraTools,
+    ]
       .filter((t) => !LIVE_TOOL_DENY.has(t.name));
     const toolDefs = tools.map(({ name, description, parameters }) => ({ name, description, parameters }));
 

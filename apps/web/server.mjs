@@ -5,26 +5,39 @@
 import { createServer } from "node:http";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
+import { createBasicAuth, rejectBasicAuth } from "./auth.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = Number(process.env.WEB_PORT || process.env.PORT || 3000);
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const AGENT_URL = process.env.AGENT_SERVICE_URL || "http://localhost:8787";
 const SECRET = (process.env.OPENLIVE_AGENT_SECRET || "").trim(); // trim to match the agent's own .trim()
+const ACCESS_USER = (process.env.OPENLIVE_ACCESS_USER || "").trim();
+const ACCESS_PASSWORD = (process.env.OPENLIVE_ACCESS_PASSWORD || "").trim();
+const access = createBasicAuth(ACCESS_USER, ACCESS_PASSWORD);
 
 const app = next({ dev, hostname, port });
 await app.prepare();
 const handle = app.getRequestHandler();
 const upgrade = app.getUpgradeHandler(); // Next's own HMR/websocket upgrade handler
 
-const server = createServer((req, res) => { const r = handle(req, res); keepOnlyOurUpgrade(); return r; });
+const server = createServer((req, res) => {
+  if (access.required && !access.authenticate(req)) { rejectBasicAuth(res); return; }
+  const r = handle(req, res); keepOnlyOurUpgrade(); return r;
+});
 const wss = new WebSocketServer({ noServer: true });
 
 // Route WebSocket upgrades: /live → the agent proxy, everything else → Next.
 const onUpgrade = (req, socket, head) => {
   let pathname = "/", search = "";
   try { const u = new URL(req.url ?? "", "http://localhost"); pathname = u.pathname; search = u.search; } catch { /* keep defaults */ }
-  if (pathname === "/live") wss.handleUpgrade(req, socket, head, (client) => proxyLive(client, search));
+  const user = access.authenticate(req);
+  if (access.required && !user) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="OpenLive"\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (pathname === "/live") wss.handleUpgrade(req, socket, head, (client) => proxyLive(client, search, user || ""));
   else upgrade(req, socket, head);
 };
 // Next LAZILY attaches its OWN 'upgrade' listener to our server on the first HTTP
@@ -42,9 +55,9 @@ server.on("upgrade", onUpgrade);
 // connects the browser straight to the agent) — so it logs which side drops first
 // (with code+reason+timing) to make otherwise-blind failures diagnosable, and it
 // tells the browser WHY before closing so the UI can show a real error.
-function proxyLive(client, search) {
+function proxyLive(client, search, user) {
   const target = AGENT_URL.replace(/^http/, "ws") + "/live" + search;
-  const upstream = new WebSocket(target, { headers: { "x-openlive-secret": SECRET } });
+  const upstream = new WebSocket(target, { headers: { "x-openlive-secret": SECRET, "x-openlive-user": user } });
   const t0 = Date.now();
   const queue = [];
   let closed = false;

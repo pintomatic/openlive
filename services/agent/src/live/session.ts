@@ -7,6 +7,7 @@ import type { Message } from "@openlive/harness";
 import type { Emit, TaktTool } from "../tools.js";
 import { foldBlock } from "../block-emit.js";
 import { LiveTurnRunner } from "./turn-runner.js";
+import { createKernalVoiceSession } from "../kernal.js";
 
 type Frame = { data: string; mime: string };
 type TurnFrame = Frame & { source: "camera" | "screen" };
@@ -39,6 +40,8 @@ function truncateSpokenText(blocks: MessageBlock[], spoken: string): void {
 // the conversation.
 export class LiveSession {
   private runner: LiveTurnRunner;
+  private kernal: ReturnType<typeof createKernalVoiceSession>;
+  private ready: Promise<void> = Promise.resolve();
   private warmAc: AbortController | null = null; // aborts the cache-warm request on teardown
   private ac: AbortController | null = null;
   private turnActive = false;
@@ -57,7 +60,8 @@ export class LiveSession {
   // action via Electron and replies; on the web it replies "not available".
   private bridgePending = new Map<string, (out: string) => void>();
 
-  constructor(private ws: WebSocket, private chatId: string) {
+  constructor(private ws: WebSocket, private chatId: string, private userId = "") {
+    this.kernal = createKernalVoiceSession(userId);
     const lookTool: TaktTool = {
       name: "look",
       description: "Capture a fresh, higher-resolution frame from the user's camera and see it right now. Use when you need a closer or more current look at what the user is showing you. If the camera is off this returns nothing — then ask the user to turn it on.",
@@ -88,7 +92,7 @@ export class LiveSession {
       parameters: { type: "object", properties: { url: { type: "string", description: "The http(s) URL to open" } }, required: ["url"], additionalProperties: false },
       execute: async (args) => ({ output: await this.bridge("open_url", String(args?.url ?? "")) }),
     };
-    this.runner = new LiveTurnRunner([lookTool, clipboardRead, clipboardWrite, openUrl]);
+    this.runner = new LiveTurnRunner([lookTool, clipboardRead, clipboardWrite, openUrl], this.kernal);
 
     ws.on("message", (data: Buffer, isBinary: boolean) => {
       if (isBinary) this.onBinary(data);
@@ -99,6 +103,11 @@ export class LiveSession {
   }
 
   async start() {
+    this.ready = this.initialize();
+    await this.ready;
+  }
+
+  private async initialize() {
     // Persist the chat row + rehydrate recent history (so a reconnect mid-call
     // doesn't make the agent forget what was already said).
     if (this.chatId) {
@@ -106,6 +115,7 @@ export class LiveSession {
       const prior = this.rehydrate();
       if (prior.length) this.runner.seed(prior);
     }
+    if (this.kernal) this.runner.setKernalContext(await this.kernal.bootstrap());
     // Warm the prompt cache + connection in the background so the first spoken turn
     // answers fast. Tell the client when it's done (drives the "Warming up…" spinner);
     // always signal ready, even on failure, so the indicator never sticks.
@@ -184,6 +194,8 @@ export class LiveSession {
   // ── turn ────────────────────────────────────────────────────────────────
   private async runTurn(text: string, frames: TurnFrame[] = []) {
     if (!text.trim() || this.closed) return;
+    await this.ready;
+    if (this.closed) return;
     // A new utterance during an in-flight turn (barge-in) must NOT be dropped:
     // queue it (append) and the finally below drains it as one turn.
     if (this.turnActive) { this.queuedText = this.queuedText ? `${this.queuedText} ${text}` : text; return; }
@@ -255,6 +267,7 @@ export class LiveSession {
     this.lookPending?.resolve(null);
     for (const r of this.bridgePending.values()) r("The session ended.");
     this.bridgePending.clear();
+    this.kernal?.dispose();
     try { this.ws.close(); } catch { /* already closing */ }
   }
 }

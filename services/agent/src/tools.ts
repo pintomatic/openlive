@@ -178,6 +178,8 @@ export function buildWorkerTools(ctx: { emit: Emit }): TaktTool[] {
 }
 
 /** Tools for the MAIN voice agent: it delegates web work and otherwise talks. */
-export function buildTaktTools(ctx: { emit: Emit; signal?: AbortSignal; runWorker?: RunWorker }): TaktTool[] {
-  return [makeDelegate(ctx.emit, ctx.signal, ctx.runWorker), makeUpdateTodos(ctx.emit), makeRemember(ctx.emit)];
+export function buildTaktTools(ctx: { emit: Emit; signal?: AbortSignal; runWorker?: RunWorker; includeRemember?: boolean }): TaktTool[] {
+  const tools = [makeDelegate(ctx.emit, ctx.signal, ctx.runWorker), makeUpdateTodos(ctx.emit)];
+  if (ctx.includeRemember !== false) tools.push(makeRemember(ctx.emit));
+  return tools;
 }

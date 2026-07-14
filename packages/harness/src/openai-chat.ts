@@ -7,7 +7,7 @@ import { sseLines } from "./sse"
  *  most other hosted providers speak it (OpenAI's own Responses API and Ollama
  *  are handled by the `openai` adapter instead). */
 
-function toChatMessages(messages: Message[]): unknown[] {
+export function toChatMessages(messages: Message[]): unknown[] {
   const out: Record<string, unknown>[] = []
   for (const m of messages) {
     if (m.role === "system") {
@@ -27,6 +27,7 @@ function toChatMessages(messages: Message[]): unknown[] {
           id: tc.id,
           type: "function",
           function: { name: tc.name, arguments: tc.arguments || "{}" },
+          ...(tc.thoughtSignature ? { extra_content: { google: { thought_signature: tc.thoughtSignature } } } : {}),
         }))
       }
       out.push(msg)
@@ -112,9 +113,12 @@ export async function* streamOpenAIChat(opts: {
     if (rc) yield { type: "reasoning", delta: rc }
     for (const tc of d?.tool_calls ?? []) {
       const index = tc.index ?? 0
+      const thoughtSignature = tc.extra_content?.google?.thought_signature
       if (!seen.has(index)) {
         seen.add(index)
-        yield { type: "tool_start", index, id: tc.id ?? `call_${index}`, name: tc.function?.name ?? "" }
+        yield { type: "tool_start", index, id: tc.id ?? `call_${index}`, name: tc.function?.name ?? "", thoughtSignature }
+      } else if (thoughtSignature) {
+        yield { type: "tool_signature", index, signature: thoughtSignature }
       }
       if (tc.function?.arguments) yield { type: "tool_delta", index, argsDelta: tc.function.arguments }
     }

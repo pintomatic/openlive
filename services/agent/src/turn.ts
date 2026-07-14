@@ -22,7 +22,7 @@ export async function collectTurn(
   let reasoningSignature: string | undefined;
   const usage = { input: 0, output: 0 };
   // Tool-use blocks arrive as start + streamed JSON-arg deltas + stop, keyed by index.
-  const calls = new Map<number, { id: string; name: string; args: string }>();
+  const calls = new Map<number, { id: string; name: string; args: string; thoughtSignature?: string }>();
 
   for await (const ev of gen) {
     switch (ev.type) {
@@ -42,8 +42,13 @@ export async function collectTurn(
         reasoningSignature = ev.signature;
         break;
       case "tool_start":
-        calls.set(ev.index, { id: ev.id, name: ev.name, args: "" });
+        calls.set(ev.index, { id: ev.id, name: ev.name, args: "", thoughtSignature: ev.thoughtSignature });
         break;
+      case "tool_signature": {
+        const c = calls.get(ev.index);
+        if (c) c.thoughtSignature = ev.signature;
+        break;
+      }
       case "tool_delta": {
         const c = calls.get(ev.index);
         if (!c) break;
@@ -61,6 +66,6 @@ export async function collectTurn(
     }
   }
 
-  const toolCalls: ToolCall[] = [...calls.values()].map((c) => ({ id: c.id, name: c.name, arguments: c.args }));
+  const toolCalls: ToolCall[] = [...calls.values()].map((c) => ({ id: c.id, name: c.name, arguments: c.args, thoughtSignature: c.thoughtSignature }));
   return { text, reasoning, reasoningSignature, toolCalls, usage };
 }
