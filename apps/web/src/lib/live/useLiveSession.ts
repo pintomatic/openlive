@@ -5,7 +5,8 @@ import { chatStore } from "@/lib/chatStore";
 import { LiveClient } from "./liveClient";
 import { CameraCapture } from "./cameraCapture";
 import { AudioPlayer } from "./audioPlayback";
-import { VoiceEngine, type EnginePhase } from "./voiceEngine";
+import { VoiceEngine, type EnginePhase, type VoiceEngineHandlers } from "./voiceEngine";
+import { NativeVoiceEngine, nativeVoiceAvailable, preferNativeVoice, primeNativeSpeech } from "./nativeVoiceEngine";
 import { loadModels, modelsReady, modelsCached } from "./models";
 import { useLiveStore } from "./liveStore";
 
@@ -25,7 +26,8 @@ function abToBase64(ab: ArrayBuffer): string {
 export function useLiveSession(chatId: string) {
   const set = useLiveStore((s) => s.set);
   const client = useRef<LiveClient | null>(null);
-  const engine = useRef<VoiceEngine | null>(null);
+  const engine = useRef<VoiceEngine | NativeVoiceEngine | null>(null);
+  const nativeFallback = useRef(false);
   const player = useRef<AudioPlayer | null>(null);
   const camRef = useRef<CameraCapture | null>(null);
   const screenRef = useRef<CameraCapture | null>(null);
@@ -66,6 +68,8 @@ export function useLiveSession(chatId: string) {
 
   const start = useCallback(async () => {
     tornDown.current = false;
+    // Must happen before the first await: iOS grants speech playback from this tap.
+    primeNativeSpeech();
     set({ error: undefined, phase: "connecting", active: true, downloadPct: 0, userCaption: "", userPartial: false, agentCaption: "", toolStatus: "" });
     // Unlock audio NOW, synchronously inside the click gesture. iOS Safari blocks
     // AudioContext playback that starts after an await, so priming here (before the
@@ -74,7 +78,22 @@ export function useLiveSession(chatId: string) {
     player.current.resume();
     try {
       // 1. Models (download-on-demand, cached). Shows a progress bar the first time.
-      if (!modelsReady()) { set({ phase: "loading" }); await loadModels((p) => set({ downloadPct: p.pct, downloadLoaded: p.loaded, downloadTotal: p.total, downloadModels: p.models })); }
+      // If Hugging Face's model bridge refuses the artifacts, keep the call usable
+      // with native browser STT/TTS so provider testing is not blocked.
+      let nativeVoice = nativeFallback.current || preferNativeVoice();
+      if (nativeVoice) nativeFallback.current = true;
+      if (!nativeVoice && !modelsReady()) {
+        set({ phase: "loading" });
+        try {
+          await loadModels((p) => set({ downloadPct: p.pct, downloadLoaded: p.loaded, downloadTotal: p.total, downloadModels: p.models }));
+        } catch (err: any) {
+          if (!nativeVoiceAvailable()) throw err;
+          nativeVoice = true;
+          nativeFallback.current = true;
+          try { sessionStorage.setItem("openlive-native-voice-fallback", "1"); } catch { /* */ }
+          set({ error: "On-device voice models could not download, using browser voice for this test." });
+        }
+      }
       if (tornDown.current) return;
 
       // 2. Mic stream — chosen device + browser AEC (so the agent's own voice is
@@ -87,7 +106,7 @@ export function useLiveSession(chatId: string) {
       if (tornDown.current) { stream.getTracks().forEach((t) => t.stop()); return; }
 
       // 3. Voice engine.
-      const eng = new VoiceEngine({
+      const voiceHandlers: VoiceEngineHandlers = {
         // Entering "listening" clears the previous answer's caption so the user
         // sees themselves (or "Listening…") the moment they start talking.
         onPhase: (p: EnginePhase) => set(p === "listening" ? { phase: p, agentCaption: "", toolStatus: "" } : { phase: p }),
@@ -137,7 +156,11 @@ export function useLiveSession(chatId: string) {
           curChunk.current = null;
           set({ agentCaption: "", userCaption: "", userPartial: false });
         },
-      }, player.current ?? undefined);
+        onError: (message) => set({ error: message }),
+      };
+      const eng = nativeVoice
+        ? new NativeVoiceEngine(voiceHandlers)
+        : new VoiceEngine(voiceHandlers, player.current ?? undefined);
       engine.current = eng;
       await eng.start(stream);
       if (tornDown.current) return;
@@ -233,12 +256,28 @@ export function useLiveSession(chatId: string) {
   // Explicit, user-initiated model download (pre-call). Nothing downloads until
   // the user asks — and because the worker stays warm, this only happens once.
   const download = useCallback(async () => {
+    if (preferNativeVoice()) {
+      nativeFallback.current = true;
+      try { sessionStorage.setItem("openlive-native-voice-fallback", "1"); } catch { /* */ }
+      set({ modelsDownloaded: true, downloading: false, error: undefined });
+      return;
+    }
     if (modelsReady()) { set({ modelsDownloaded: true }); return; }
     set({ downloading: true, downloadPct: 0, error: undefined });
     try {
       await loadModels((p) => set({ downloadPct: p.pct, downloadLoaded: p.loaded, downloadTotal: p.total, downloadModels: p.models }));
       set({ modelsDownloaded: true, downloading: false });
     } catch (e: any) {
+      if (nativeVoiceAvailable()) {
+        nativeFallback.current = true;
+        try { sessionStorage.setItem("openlive-native-voice-fallback", "1"); } catch { /* */ }
+        set({
+          modelsDownloaded: true,
+          downloading: false,
+          error: `On-device AI models could not download, but browser voice is available for testing: ${String(e?.message ?? e)}`,
+        });
+        return;
+      }
       set({ downloading: false, error: `Couldn't download the AI models: ${String(e?.message ?? e)}` });
     }
   }, [set]);
@@ -248,9 +287,12 @@ export function useLiveSession(chatId: string) {
     // the pre-call screen never re-asks after a refresh. If cached but the worker
     // isn't warm in THIS page, silently pre-load it in the background so hitting
     // start is instant — no visible progress bar (it reads from cache, fast).
+    let rememberedNative = preferNativeVoice();
+    try { rememberedNative ||= sessionStorage.getItem("openlive-native-voice-fallback") === "1" && nativeVoiceAvailable(); } catch { /* */ }
+    nativeFallback.current = rememberedNative;
     const cached = modelsCached();
-    set({ modelsDownloaded: cached || modelsReady() });
-    if (cached && !modelsReady()) void loadModels(() => {}).catch(() => {});
+    set({ modelsDownloaded: rememberedNative || cached || modelsReady() });
+    if (cached && !rememberedNative && !modelsReady()) void loadModels(() => {}).catch(() => {});
     try {
       const devs = await navigator.mediaDevices.enumerateDevices();
       set({

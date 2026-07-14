@@ -18,6 +18,7 @@ export interface VoiceEngineHandlers {
   onUserText: (text: string) => void;      // final user turn → send to server
   onAgentText: (sentence: string, durationMs: number) => void; // agent caption chunk + how long it plays (for word-timed reveal)
   onBargeIn: (spoken: string) => void;      // cancel the LLM stream; `spoken` = what was actually voiced so far
+  onError?: (message: string) => void;
 }
 
 const PARTIAL_MS = 500;      // min gap between interim transcriptions
