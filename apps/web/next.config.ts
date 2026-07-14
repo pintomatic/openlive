@@ -37,6 +37,8 @@ const CSP = [
 ].join("; ");
 
 const config: NextConfig = {
+  // Keep production builds bounded on the NUC and small pilot hosts.
+  experimental: { cpus: 4, memoryBasedWorkersCount: false },
   // Self-contained server output for the Electron desktop build.
   output: "standalone",
   // The UI uses no next/image, so skip Next's image optimizer — that drops the
