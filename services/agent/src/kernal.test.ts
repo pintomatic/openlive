@@ -53,7 +53,7 @@ test("Kernal requests carry canonical headers and confirmed actions are one-time
     const url = String(input);
     const body = init.body ? JSON.parse(String(init.body)) : null;
     calls.push({ url, init, body });
-    if (url.includes("/api/wiki/hub-keeper-registry")) return Response.json({ content: registry, updated_at: "2026-07-14" });
+    if (url.endsWith("/api/keepers/fleet")) return Response.json({ contract_version: "keeper-fleet.v1", generated_at: "2026-07-15T00:00:00Z", keepers: [{ keeper_id: "keeper.codex.code-local-ops", display_name: "Code Local Ops", agent_kind: "codex", status: "active", branch_uri: "code/local-ops", current_work: "Testing Kernal.", next_action: "Deploy safely.", blockers: [], last_heartbeat_at: "2026-07-15T00:00:00Z", hub: { id: 467, slug: "hub-code", updated_at: "2026-07-15" }, child_hubs: [{ id: 468, slug: "hub-openlive-voice-surface", title: "OpenLive Voice Surface" }], freshness: { state: "fresh" }, warnings: [], provenance: { authority_source_id: 221, authority_version: 2, state_version: 1 } }] });
     if (url.includes("/api/wiki?")) return Response.json({ pages: [{ id: 468, slug: "hub-code", updated_at: "2026-07-14" }] });
     if (url.endsWith("/api/wiki/hub-code")) return Response.json({ content: "STATUS\nTesting Kernal.\n\nNEXT ACTION\nDeploy safely.\n\nRULES IN FORCE\nNo secrets.", updated_at: "2026-07-14" });
     if (url.includes("/api/search")) return Response.json({ results: [{ type: "memory", id: 7, title: "A fact", snippet: "Useful evidence", ts: "2026-07-14" }] });
@@ -69,7 +69,8 @@ test("Kernal requests carry canonical headers and confirmed actions are one-time
   const emit = async () => {};
   const status = session.buildTools({ emit, userText: "fleet", turnNumber: 1 }).find((tool) => tool.name === "keeper_status")!;
   assert.match((await status.execute({})).output, /Deploy safely/);
-  assert.equal(calls.filter((call) => call.url.includes("hub-keeper-registry")).length, 1, "keeper status should use the 60-second cache");
+  assert.match((await status.execute({})).output, /OpenLive Voice Surface/);
+  assert.equal(calls.filter((call) => call.url.endsWith("/api/keepers/fleet")).length, 1, "keeper status should use the 60-second cache");
 
   const turnOne = session.buildTools({ emit, userText: "prepare it", turnNumber: 1 });
   const prepare = turnOne.find((tool) => tool.name === "prepare_keeper_action")!;
@@ -105,7 +106,7 @@ test("missing provenance id is reported as partial success", async () => {
   resetKernalCacheForTests();
   const fakeFetch = async (input: string | URL | Request, init: RequestInit = {}) => {
     const url = String(input);
-    if (url.includes("/api/wiki/hub-keeper-registry")) return Response.json({ content: registry, updated_at: "2026-07-14" });
+    if (url.endsWith("/api/keepers/fleet")) return Response.json({ contract_version: "keeper-fleet.v1", generated_at: "2026-07-15T00:00:00Z", keepers: [{ keeper_id: "keeper.codex.code-local-ops", status: "active", branch_uri: "code/local-ops", current_work: "Active.", next_action: "Continue.", blockers: [], hub: { id: 467, slug: "hub-code" }, child_hubs: [], freshness: { state: "fresh" }, warnings: [], provenance: { authority_source_id: 221, authority_version: 2, state_version: 1 } }] });
     if (url.includes("/api/wiki?")) return Response.json({ pages: [{ id: 468, slug: "hub-code" }] });
     if (url.endsWith("/api/wiki/hub-code")) return Response.json({ content: "STATUS\nActive.\n\nNEXT ACTION\nContinue." });
     if (url.endsWith("/api/actions")) return Response.json({ action: { id: 77 } });

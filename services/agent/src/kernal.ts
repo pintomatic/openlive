@@ -23,6 +23,11 @@ export interface KeeperRecord {
   workStatus: string;
   nextAction: string;
   updatedAt: string | null;
+  blockers: string[];
+  freshness: string;
+  warnings: string[];
+  childHubs: Array<{ id: number; slug: string; title: string }>;
+  provenance: string;
 }
 
 export interface KernalConfig {
@@ -30,6 +35,7 @@ export interface KernalConfig {
   apiKey: string;
   readEnabled: boolean;
   writeEnabled: boolean;
+  legacyFleetFallback?: boolean;
 }
 
 interface ActionProposal {
@@ -66,6 +72,7 @@ export function loadKernalConfig(): KernalConfig {
     apiKey,
     readEnabled,
     writeEnabled: readEnabled && flag("KERNAL_WRITE_ENABLED"),
+    legacyFleetFallback: flag("KERNAL_FLEET_LEGACY_FALLBACK"),
   };
 }
 
@@ -106,6 +113,7 @@ export function parseKeeperRegistry(markdown: string): KeeperRecord[] {
       workStatus: "not recorded",
       nextAction: "not recorded",
       updatedAt: null,
+      blockers: [], freshness: "unknown", warnings: [], childHubs: [], provenance: "legacy Markdown registry",
     });
   }
   return rows.filter((row) => row.status === "ACTIVE").slice(0, MAX_KEEPERS);
@@ -187,6 +195,36 @@ export class KernalVoiceSession {
       this.registryUpdatedAt = fleetCache.registryUpdatedAt;
       return;
     }
+    try {
+      const fleet = await this.request("/api/keepers/fleet", {}, BOOTSTRAP_TIMEOUT_MS);
+      if (fleet?.contract_version !== "keeper-fleet.v1" || !Array.isArray(fleet?.keepers)) throw new Error("unsupported keeper fleet contract");
+      const seen = new Set<string>();
+      const keepers: KeeperRecord[] = [];
+      for (const row of fleet.keepers.slice(0, MAX_KEEPERS)) {
+        const keeperId = bounded(row?.keeper_id, 120);
+        if (!keeperId || seen.has(keeperId) || String(row?.status).toLowerCase() !== "active") continue;
+        seen.add(keeperId);
+        keepers.push({
+          keeperId, status: "ACTIVE", branch: sanitizeEvidence(row?.branch_uri, 180),
+          hubId: Number.isFinite(Number(row?.hub?.id)) ? Number(row.hub.id) : null,
+          hubSlug: bounded(row?.hub?.slug, 160) || null,
+          authority: `source #${Number(row?.provenance?.authority_source_id) || "?"}; authority v${Number(row?.provenance?.authority_version) || "?"}`,
+          workStatus: sanitizeEvidence(row?.current_work, 700), nextAction: sanitizeEvidence(row?.next_action, 700),
+          updatedAt: bounded(row?.last_heartbeat_at ?? row?.hub?.updated_at, 40) || null,
+          blockers: (Array.isArray(row?.blockers) ? row.blockers : []).slice(0, 20).map((item: unknown) => sanitizeEvidence(item, 240)),
+          freshness: bounded(row?.freshness?.state, 40) || "unknown",
+          warnings: (Array.isArray(row?.warnings) ? row.warnings : []).slice(0, 20).map((item: any) => `${bounded(item?.code, 80)}: ${sanitizeEvidence(item?.message, 260)}`),
+          childHubs: (Array.isArray(row?.child_hubs) ? row.child_hubs : []).slice(0, 50).map((hub: any) => ({ id: Number(hub?.id), slug: bounded(hub?.slug, 160), title: sanitizeEvidence(hub?.title, 180) })).filter((hub: any) => Number.isFinite(hub.id) && hub.slug),
+          provenance: `authority source #${Number(row?.provenance?.authority_source_id) || "?"}; authority v${Number(row?.provenance?.authority_version) || "?"}; state v${Number(row?.provenance?.state_version) || "?"}`,
+        });
+      }
+      this.keepers = keepers;
+      this.registryUpdatedAt = bounded(fleet?.generated_at, 40) || null;
+      fleetCache = { at: Date.now(), keepers: keepers.map((keeper) => ({ ...keeper, blockers: [...keeper.blockers], warnings: [...keeper.warnings], childHubs: keeper.childHubs.map(hub => ({ ...hub })) })), registryUpdatedAt: this.registryUpdatedAt };
+      return;
+    } catch (error) {
+      if (!this.config.legacyFleetFallback) throw error;
+    }
     const [registry, wikiList] = await Promise.all([
       this.request(`/api/wiki/${REGISTRY_SLUG}`, {}, BOOTSTRAP_TIMEOUT_MS),
       this.request("/api/wiki?status=published&limit=500", {}, BOOTSTRAP_TIMEOUT_MS),
@@ -232,6 +270,11 @@ export class KernalVoiceSession {
       `Owned HUB: ${keeper.hubSlug ?? "none recorded"}`,
       `Current work: ${keeper.workStatus}`,
       `Next action: ${keeper.nextAction}`,
+      `Blockers: ${keeper.blockers.join("; ") || "none"}`,
+      `Freshness: ${keeper.freshness}`,
+      `Warnings: ${keeper.warnings.join("; ") || "none"}`,
+      `Child projects: ${keeper.childHubs.map((hub) => `${hub.title} (${hub.slug})`).join("; ") || "none"}`,
+      `Evidence: ${keeper.provenance}`,
       `Updated: ${keeper.updatedAt ?? this.registryUpdatedAt ?? "unknown"}`,
     ].join("\n")).join("\n\n");
     return { output: output.slice(0, 8_000) };
@@ -352,7 +395,7 @@ export class KernalVoiceSession {
     const tools: TaktTool[] = [
       {
         name: "keeper_status",
-        description: "Read the canonical ACTIVE keeper roster and each owned HUB's current STATUS and NEXT ACTION. Use for questions about keepers, branches, ownership, current work, or what happens next. Missing state is reported, never inferred.",
+        description: "Read the typed canonical ACTIVE keeper fleet including branch, current work, next action, blockers, freshness, warnings, child projects, and authority provenance. Missing state is reported, never inferred.",
         parameters: jsonSchema({ keeper: { type: "string", description: "Optional keeper id or branch phrase; omit for the full active fleet" } }, []),
         execute: (args) => wrap("keeper_status", bounded(args?.keeper, 100) || "active fleet", () => this.keeperStatus(String(args?.keeper ?? "")))(),
       },
