@@ -5,7 +5,7 @@ import { chatStore } from "@/lib/chatStore";
 import { LiveClient } from "./liveClient";
 import { CameraCapture } from "./cameraCapture";
 import { AudioPlayer } from "./audioPlayback";
-import { VoiceEngine, type EnginePhase, type VoiceEngineHandlers } from "./voiceEngine";
+import { VoiceEngine, type EnginePhase, type VoiceEngineHandlers, type VoiceInputMode } from "./voiceEngine";
 import { NativeVoiceEngine, nativeVoiceAvailable, preferNativeVoice, primeNativeSpeech } from "./nativeVoiceEngine";
 import { loadModels, modelsReady, modelsCached } from "./models";
 import { useLiveStore } from "./liveStore";
@@ -34,7 +34,8 @@ export function useLiveSession(chatId: string) {
   const micStream = useRef<MediaStream | null>(null);
   const assistantId = useRef<string | null>(null);
   const tornDown = useRef(false);
-  const onPageHide = useRef<() => void>(() => {});
+  const onVisibility = useRef<() => void>(() => {});
+  const wakeLock = useRef<{ release: () => Promise<void> } | null>(null);
   // Word-by-word transcript reveal, synced to the VOICE (not the generated stream):
   // `segText` = chunks of the CURRENT segment already voiced, `curChunk` = the one
   // revealing now, `revealRaf` = its frame. Tool activity is shown LIVE on tool_start
@@ -45,12 +46,24 @@ export function useLiveSession(chatId: string) {
   const stopReveal = () => { if (revealRaf.current != null) { cancelAnimationFrame(revealRaf.current); revealRaf.current = null; } };
   const resetTranscript = () => { stopReveal(); segText.current = ""; curChunk.current = null; };
 
+  const releaseWakeLock = useCallback(() => {
+    const current = wakeLock.current;
+    wakeLock.current = null;
+    if (current) void current.release().catch(() => {});
+  }, []);
+  const acquireWakeLock = useCallback(async () => {
+    if (document.visibilityState !== "visible" || wakeLock.current) return;
+    const nav = navigator as Navigator & { wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> } };
+    try { wakeLock.current = await nav.wakeLock?.request("screen") ?? null; } catch { wakeLock.current = null; }
+  }, []);
+
   // ── single teardown authority — releases EVERYTHING, always ───────────────
   const teardown = useCallback(() => {
     if (tornDown.current) return;
     tornDown.current = true;
     stopReveal();
-    window.removeEventListener("pagehide", onPageHide.current);
+    document.removeEventListener("visibilitychange", onVisibility.current);
+    releaseWakeLock();
     try { client.current?.close(); } catch { /* */ }
     try { engine.current?.stop(); } catch { /* */ }              // destroys VAD + closes audio
     try { player.current?.close(); } catch { /* */ }             // free the audio ctx (also if start() failed before the engine)
@@ -63,8 +76,8 @@ export function useLiveSession(chatId: string) {
     // tab's lifetime so reopening Live is instant (no re-download / shader recompile).
     client.current = null; engine.current = null; camRef.current = null; screenRef.current = null;
     // Keep `error` so the user sees why it ended; start() clears it next time.
-    set({ active: false, phase: "off", downloading: false, downloadPct: 0, cameraOn: false, screenOn: false, muted: false, cameraStream: null, screenStream: null, userCaption: "", userPartial: false, agentCaption: "", toolStatus: "", warming: false });
-  }, [chatId, set]);
+    set({ active: false, phase: "off", downloading: false, downloadPct: 0, cameraOn: false, screenOn: false, muted: false, pushActive: false, cameraStream: null, screenStream: null, userCaption: "", userPartial: false, agentCaption: "", toolStatus: "", warming: false });
+  }, [chatId, releaseWakeLock, set]);
 
   const start = useCallback(async () => {
     tornDown.current = false;
@@ -163,13 +176,14 @@ export function useLiveSession(chatId: string) {
         : new VoiceEngine(voiceHandlers, player.current ?? undefined);
       engine.current = eng;
       await eng.start(stream);
+      eng.setInputMode(useLiveStore.getState().inputMode);
       if (tornDown.current) return;
 
       // 4. Socket. Phase stays "connecting" until the socket actually opens — no
       //    more optimistic "Listening" that lies when the connection never lands.
       set({ phase: "connecting" });
       const c = new LiveClient({
-        onOpen: () => set({ phase: "idle", error: undefined, warming: true }),
+        onOpen: () => { set({ phase: "idle", error: undefined, warming: true }); void acquireWakeLock(); },
         onReconnecting: () => set({ phase: "reconnecting" }),
         onClose: () => teardown(),
         onError: (m) => set({ error: m }),
@@ -226,8 +240,22 @@ export function useLiveSession(chatId: string) {
       client.current = c;
       c.connect(chatId);
 
-      onPageHide.current = () => teardown();
-      window.addEventListener("pagehide", onPageHide.current);
+      onVisibility.current = () => {
+        if (document.visibilityState === "hidden") {
+          client.current?.suspend();
+          releaseWakeLock();
+          return;
+        }
+        void fetch("/auth/status", { cache: "no-store" }).then(async (response) => {
+          if (!response.ok) return;
+          const auth = await response.json();
+          if (auth.enabled && !auth.authenticated) { window.location.reload(); return; }
+          client.current?.resume();
+          if (!useLiveStore.getState().muted) engine.current?.setMuted(false);
+          void acquireWakeLock();
+        }).catch(() => { client.current?.resume(); void acquireWakeLock(); });
+      };
+      document.addEventListener("visibilitychange", onVisibility.current);
       await refreshDevices();
     } catch (e: any) {
       const denied = e?.name === "NotAllowedError" || e?.name === "SecurityError";
@@ -235,7 +263,7 @@ export function useLiveSession(chatId: string) {
       teardown();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, set, teardown]);
+  }, [acquireWakeLock, chatId, releaseWakeLock, set, teardown]);
 
   // A completed user turn: attach the freshest camera frame, send the text, and
   // reflect the exchange in the chat store (so it renders + persists like typing).
@@ -308,6 +336,20 @@ export function useLiveSession(chatId: string) {
     const next = !useLiveStore.getState().muted;
     engine.current?.setMuted(next);
     set({ muted: next });
+  }, [set]);
+
+  const setInputMode = useCallback((mode: VoiceInputMode) => {
+    engine.current?.setInputMode(mode);
+    if (mode === "conversation") engine.current?.setMuted(false);
+    set({ inputMode: mode, pushActive: false, muted: false, userCaption: "", userPartial: false });
+  }, [set]);
+
+  const togglePushToTalk = useCallback(() => {
+    if (useLiveStore.getState().inputMode !== "push-to-talk") return;
+    const next = !useLiveStore.getState().pushActive;
+    if (next) engine.current?.beginPushToTalk();
+    else engine.current?.endPushToTalk();
+    set({ pushActive: next });
   }, [set]);
 
   // Change the mic — live if a call is active (rebuild the stream + VAD), else it
@@ -395,5 +437,5 @@ export function useLiveSession(chatId: string) {
   // reactive spectrum while you or the agent talk.
   const getBands = useCallback(() => ({ mic: engine.current?.micBands() ?? NO_BANDS, agent: engine.current?.agentBands() ?? NO_BANDS }), []);
 
-  return { start, stop, download, toggleMute, toggleCamera, toggleScreen, getLevels, getBands, refreshDevices, setMic, setCam };
+  return { start, stop, download, toggleMute, toggleCamera, toggleScreen, setInputMode, togglePushToTalk, getLevels, getBands, refreshDevices, setMic, setCam };
 }

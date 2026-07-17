@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import { createBasicAuth, rejectBasicAuth } from "./auth.mjs";
+import { createWebAuthnGate } from "./webauthn.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = Number(process.env.WEB_PORT || process.env.PORT || 3000);
@@ -15,14 +16,23 @@ const SECRET = (process.env.OPENLIVE_AGENT_SECRET || "").trim(); // trim to matc
 const ACCESS_USER = (process.env.OPENLIVE_ACCESS_USER || "").trim();
 const ACCESS_PASSWORD = (process.env.OPENLIVE_ACCESS_PASSWORD || "").trim();
 const access = createBasicAuth(ACCESS_USER, ACCESS_PASSWORD);
+const webauthn = createWebAuthnGate();
 
 const app = next({ dev, hostname, port });
 await app.prepare();
 const handle = app.getRequestHandler();
 const upgrade = app.getUpgradeHandler(); // Next's own HMR/websocket upgrade handler
 
-const server = createServer((req, res) => {
-  if (access.required && !access.authenticate(req)) { rejectBasicAuth(res); return; }
+const server = createServer(async (req, res) => {
+  const user = access.authenticate(req);
+  if (access.required && !user) { rejectBasicAuth(res); return; }
+  if (await webauthn.handle(req, res, user || "")) return;
+  let pathname = "/";
+  try { pathname = new URL(req.url ?? "", "http://localhost").pathname; } catch { /* keep default */ }
+  if (webauthn.enforced && pathname.startsWith("/api/") && !webauthn.authenticate(req).authenticated) {
+    webauthn.reject(res);
+    return;
+  }
   const r = handle(req, res); keepOnlyOurUpgrade(); return r;
 });
 const wss = new WebSocketServer({ noServer: true });
@@ -34,6 +44,11 @@ const onUpgrade = (req, socket, head) => {
   const user = access.authenticate(req);
   if (access.required && !user) {
     socket.write('HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="OpenLive"\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (pathname === "/live" && webauthn.enforced && !webauthn.authenticate(req).authenticated) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;
   }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Video, VideoOff, ScreenShare, ScreenShareOff, Maximize2, PhoneOff } from "lucide-react";
 import { useLiveStore, type LivePhase } from "@/lib/live/liveStore";
+import type { VoiceInputMode } from "@/lib/live/voiceEngine";
 import { toolMeta } from "@/lib/live/toolMeta";
 import { useUi } from "@/lib/uiStore";
 import { Orb } from "./Orb";
@@ -40,11 +41,11 @@ function MiniBtn({ on, title, onClick, icon: Icon, danger }: { on: boolean; titl
 // voice pipeline). Camera/screen previews render INLINE, stacked above the pill, in
 // the SAME window — which grows upward to fit. The surface fills the whole window
 // (so there's never a dark gap), no border, and macOS rounds the frameless window.
-export function MiniBar({ phase, muted, cameraOn, screenOn, cameraStream, screenStream,
-  toggleMute, toggleCamera, toggleScreen, getLevels, getBands, onEnd }: {
-  phase: LivePhase; muted: boolean; cameraOn: boolean; screenOn: boolean;
+export function MiniBar({ phase, muted, inputMode, pushActive, cameraOn, screenOn, cameraStream, screenStream,
+  toggleMute, togglePushToTalk, toggleCamera, toggleScreen, getLevels, getBands, onEnd }: {
+  phase: LivePhase; muted: boolean; inputMode: VoiceInputMode; pushActive: boolean; cameraOn: boolean; screenOn: boolean;
   cameraStream: MediaStream | null; screenStream: MediaStream | null;
-  toggleMute: () => void; toggleCamera: () => void | Promise<void>; toggleScreen: () => void | Promise<void>;
+  toggleMute: () => void; togglePushToTalk: () => void; toggleCamera: () => void | Promise<void>; toggleScreen: () => void | Promise<void>;
   getLevels: () => { mic: number; agent: number }; getBands: () => { mic: number[]; agent: number[] }; onEnd: () => void;
 }) {
   const setMinimized = useUi((s) => s.setMinimized);
@@ -94,7 +95,10 @@ export function MiniBar({ phase, muted, cameraOn, screenOn, cameraStream, screen
           ) : (
             <>
               <span className={cn("min-w-0 flex-1 truncate text-[12.5px]", cueOnly && "arc-shimmer font-medium")} aria-live="polite">{caption}</span>
-              <MiniBtn on={!muted} title={muted ? "Unmute" : "Mute"} onClick={toggleMute} icon={muted ? MicOff : Mic} danger={muted} />
+              <MiniBtn on={inputMode === "push-to-talk" ? pushActive : !muted}
+                title={inputMode === "push-to-talk" ? (pushActive ? "Send" : "Talk") : (muted ? "Resume conversation" : "Pause conversation")}
+                onClick={inputMode === "push-to-talk" ? togglePushToTalk : toggleMute}
+                icon={inputMode === "conversation" && muted ? MicOff : Mic} danger={inputMode === "conversation" && muted} />
               <MiniBtn on={cameraOn} title={cameraOn ? "Camera off" : "Camera on"} onClick={() => void toggleCamera()} icon={cameraOn ? Video : VideoOff} />
               <MiniBtn on={screenOn} title={screenOn ? "Stop sharing" : "Share screen"} onClick={() => void toggleScreen()} icon={screenOn ? ScreenShareOff : ScreenShare} />
               <MiniBtn on={false} title="Expand" onClick={() => setMinimized(false)} icon={Maximize2} />

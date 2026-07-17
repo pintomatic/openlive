@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "node server.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test auth.test.mjs"
+    "test": "node --test *.test.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
@@ -16,6 +16,8 @@
     "@openlive/harness": "workspace:*",
     "@openlive/shared": "workspace:*",
     "@ricky0123/vad-web": "^0.0.29",
+    "@simplewebauthn/browser": "13.3.0",
+    "@simplewebauthn/server": "13.3.2",
     "@tanstack/react-query": "^5.101.2",
     "clsx": "^2.1.1",
     "kokoro-js": "^1.2.0",

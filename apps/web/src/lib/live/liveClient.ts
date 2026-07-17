@@ -20,6 +20,7 @@ export class LiveClient {
   private ws: WebSocket | null = null;
   private chatId = "";
   private closedByUser = false;
+  private suspended = false;
   private attempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private healthyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -30,6 +31,7 @@ export class LiveClient {
   connect(chatId: string) {
     this.chatId = chatId;
     this.closedByUser = false;
+    this.suspended = false;
     this.open();
   }
 
@@ -48,6 +50,7 @@ export class LiveClient {
     ws.onclose = (ev) => {
       if (this.healthyTimer) { clearTimeout(this.healthyTimer); this.healthyTimer = null; }
       if (this.closedByUser) { this.h.onClose?.(); return; }
+      if (this.suspended) { this.h.onReconnecting?.(); return; }
       // Unexpected drop → reconnect a few times. The server rehydrates the
       // conversation from the DB, so the agent keeps its context across the drop.
       if (this.attempts < LiveClient.MAX_RECONNECT) {
@@ -96,6 +99,17 @@ export class LiveClient {
   }
 
   get ready() { return this.ws?.readyState === WebSocket.OPEN; }
+  suspend() {
+    this.suspended = true;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+  }
+  resume() {
+    if (this.closedByUser) return;
+    this.suspended = false;
+    if (this.ready || this.ws?.readyState === WebSocket.CONNECTING) return;
+    this.attempts = 0;
+    this.open();
+  }
   close() {
     this.closedByUser = true;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }

@@ -1,4 +1,4 @@
-import type { EnginePhase, VoiceEngineHandlers } from "./voiceEngine";
+import type { EnginePhase, VoiceEngineHandlers, VoiceInputMode } from "./voiceEngine";
 import { stripMarkdown, SentenceChunker } from "./voiceText";
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
@@ -82,6 +82,12 @@ export class NativeVoiceEngine {
   private utterances = new Set<SpeechSynthesisUtterance>();
   private agentText = "";
   private chunker = new SentenceChunker();
+  private inputMode: VoiceInputMode = "conversation";
+  private pushActive = false;
+  private pushFinal = "";
+  private pushInterim = "";
+  private pushCommitted = false;
+  private pushCommitTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private h: VoiceEngineHandlers) {}
 
@@ -90,7 +96,7 @@ export class NativeVoiceEngine {
     if (!Ctor) throw new Error("Browser speech recognition is not available.");
     this.stopped = false;
     const rec = new Ctor();
-    rec.continuous = true;
+    rec.continuous = this.inputMode === "conversation";
     rec.interimResults = true;
     rec.lang = "en-US";
     rec.onresult = (event) => this.onResult(event);
@@ -107,6 +113,7 @@ export class NativeVoiceEngine {
       if (!this.muted && !this.speaking && !this.waitingForAgent) this.restartSoon();
     };
     rec.onend = () => {
+      if (this.inputMode === "push-to-talk" && !this.pushActive) { this.commitPushToTalk(); return; }
       if (!this.stopped && !this.muted && !this.speaking && !this.waitingForAgent) this.restartSoon();
     };
     this.recognition = rec;
@@ -126,6 +133,15 @@ export class NativeVoiceEngine {
       if (r.isFinal) final += `${final ? " " : ""}${text}`;
       else interim += `${interim ? " " : ""}${text}`;
     }
+    if (this.inputMode === "push-to-talk") {
+      if (this.pushCommitted) return;
+      if (final) this.pushFinal += `${this.pushFinal ? " " : ""}${final}`;
+      this.pushInterim = interim || this.pushInterim;
+      const preview = [this.pushFinal, interim].filter(Boolean).join(" ");
+      if (preview) this.h.onPartial(preview);
+      if (!this.pushActive && final) this.commitPushToTalk();
+      return;
+    }
     if (interim) {
       this.setPhase("listening");
       this.h.onPartial(interim);
@@ -141,6 +157,7 @@ export class NativeVoiceEngine {
 
   private startRecognition() {
     if (!this.recognition || this.stopped || this.muted || this.speaking || this.waitingForAgent) return;
+    if (this.inputMode === "push-to-talk" && !this.pushActive) return;
     try { this.recognition.start(); } catch { /* already started */ }
   }
 
@@ -204,6 +221,61 @@ export class NativeVoiceEngine {
     }
   }
 
+  setInputMode(mode: VoiceInputMode) {
+    if (mode === this.inputMode) return;
+    this.inputMode = mode;
+    this.pushActive = false;
+    this.pushFinal = "";
+    this.pushInterim = "";
+    this.pushCommitted = false;
+    if (this.pushCommitTimer) { clearTimeout(this.pushCommitTimer); this.pushCommitTimer = null; }
+    if (this.recognition) this.recognition.continuous = mode === "conversation";
+    try { this.recognition?.abort(); } catch { /* */ }
+    this.h.onPartial("");
+    this.setPhase("idle");
+    if (mode === "conversation" && !this.muted) this.restartSoon();
+  }
+
+  beginPushToTalk() {
+    if (this.inputMode !== "push-to-talk" || this.pushActive || this.waitingForAgent) return;
+    if (this.speaking) {
+      try { speechSynthesis.cancel(); } catch { /* */ }
+      this.h.onBargeIn("");
+      this.speaking = false;
+      this.queuedSpeech = 0;
+      this.utterances.clear();
+    }
+    this.pushFinal = "";
+    this.pushInterim = "";
+    this.pushCommitted = false;
+    this.pushActive = true;
+    this.setPhase("listening");
+    this.startRecognition();
+    this.restartSoon();
+  }
+
+  endPushToTalk() {
+    if (this.inputMode !== "push-to-talk" || !this.pushActive) return;
+    this.pushActive = false;
+    try { this.recognition?.stop(); } catch { /* */ }
+    if (this.pushCommitTimer) clearTimeout(this.pushCommitTimer);
+    this.pushCommitTimer = setTimeout(() => this.commitPushToTalk(), 350);
+  }
+
+  private commitPushToTalk() {
+    if (this.pushCommitted) return;
+    if (this.pushCommitTimer) { clearTimeout(this.pushCommitTimer); this.pushCommitTimer = null; }
+    const text = (this.pushFinal || this.pushInterim).trim();
+    this.pushFinal = "";
+    this.pushInterim = "";
+    this.h.onPartial("");
+    if (!text) { if (!this.waitingForAgent) this.setPhase("idle"); return; }
+    this.pushCommitted = true;
+    this.waitingForAgent = true;
+    this.setPhase("thinking");
+    this.h.onUserText(text);
+  }
+
   async setStream(stream: MediaStream) {
     try { this.recognition?.abort(); } catch { /* */ }
     this.recognition = null;
@@ -222,6 +294,8 @@ export class NativeVoiceEngine {
     this.queuedSpeech = 0;
     this.turnFinished = false;
     this.waitingForAgent = false;
+    this.pushActive = false;
+    if (this.pushCommitTimer) { clearTimeout(this.pushCommitTimer); this.pushCommitTimer = null; }
     this.utterances.clear();
     try { this.recognition?.abort(); } catch { /* */ }
     try { speechSynthesis.cancel(); } catch { /* */ }

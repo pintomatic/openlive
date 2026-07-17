@@ -11,6 +11,7 @@ import { perf } from "./perf";
 // text goes to the server; the LLM's reply text streams back and is spoken with
 // Kokoro. Barge-in is a LOCAL decision, no server round-trip for audio.
 export type EnginePhase = "idle" | "listening" | "thinking" | "speaking";
+export type VoiceInputMode = "conversation" | "push-to-talk";
 
 export interface VoiceEngineHandlers {
   onPhase: (p: EnginePhase) => void;
@@ -42,6 +43,8 @@ export class VoiceEngine {
   private lastPartialAt = 0;
   private partialBusy = false;
   private finalizing = false;
+  private inputMode: VoiceInputMode = "conversation";
+  private pushActive = false;
 
   private micRms = 0;
   // A dedicated analyser on the mic stream → a real frequency spectrum for the orb
@@ -126,6 +129,7 @@ export class VoiceEngine {
 
   // ── user speech ─────────────────────────────────────────────────────────
   private onSpeechStart() {
+    if (this.inputMode === "push-to-talk") return;
     // Barge-in: user talks over the agent (past the onset grace) → kill audio now.
     if ((this.phase === "speaking" || this.player.level() > 0) && Date.now() - this.speakingStartAt > ONSET_GRACE_MS) {
       this.bargeIn();
@@ -146,6 +150,10 @@ export class VoiceEngine {
     // room so a soft talker is still heard. ponytail: a real room needs this
     // calibration; clamp keeps it from ever rising high enough to swallow speech.
     if (this.phase === "idle") this.noiseFloor = Math.min(0.03, this.noiseFloor + (rms - this.noiseFloor) * 0.05);
+    if (this.inputMode === "push-to-talk") {
+      if (this.pushActive) { this.curBuf.push(frame); this.curLen += frame.length; }
+      return;
+    }
     if (this.phase !== "listening") return;
     this.curBuf.push(frame); this.curLen += frame.length;
     void this.maybePartial();
@@ -172,6 +180,7 @@ export class VoiceEngine {
   }
 
   private async onSpeechEnd(audio: Float32Array) {
+    if (this.inputMode === "push-to-talk") return;
     if (this.finalizing) return;
     const combined = this.pending ? this.concat([this.pending, audio], this.pending.length + audio.length) : audio;
     // Reject blips and near-silence up front (ambient noise that tripped the VAD).
@@ -297,6 +306,53 @@ export class VoiceEngine {
     else void this.vad.start();
   }
 
+  setInputMode(mode: VoiceInputMode) {
+    if (mode === this.inputMode) return;
+    this.inputMode = mode;
+    this.pushActive = false;
+    this.clearHold();
+    this.pending = null;
+    this.curBuf = [];
+    this.curLen = 0;
+    this.h.onPartial("");
+    if (this.phase === "listening") this.setPhase("idle");
+  }
+
+  beginPushToTalk() {
+    if (this.inputMode !== "push-to-talk" || this.pushActive || this.finalizing) return;
+    if ((this.phase === "speaking" || this.player.level() > 0) && Date.now() - this.speakingStartAt > ONSET_GRACE_MS) this.bargeIn();
+    this.curBuf = [];
+    this.curLen = 0;
+    this.pushActive = true;
+    this.setPhase("listening");
+  }
+
+  endPushToTalk() {
+    if (this.inputMode !== "push-to-talk" || !this.pushActive) return;
+    this.pushActive = false;
+    const audio = this.concat(this.curBuf, this.curLen);
+    this.curBuf = [];
+    this.curLen = 0;
+    void this.commitExplicit(audio);
+  }
+
+  private async commitExplicit(audio: Float32Array) {
+    if (this.finalizing) return;
+    if (audio.length < MIN_UTTER_SAMPLES || rmsOf(audio) < this.gate()) { this.h.onPartial(""); this.setPhase("idle"); return; }
+    this.finalizing = true;
+    this.setPhase("thinking");
+    try {
+      const text = (await stt(audio)).trim();
+      if (isJunk(text)) { this.h.onPartial(""); this.setPhase("idle"); return; }
+      this.spokenText = "";
+      this.turnSentAt = performance.now();
+      this.h.onUserText(text);
+    } catch {
+      this.h.onPartial("");
+      this.setPhase("idle");
+    } finally { this.finalizing = false; }
+  }
+
   micLevel() { return this.micRms; }
   agentLevel() { return this.player.level(); }
   /** N octave-band magnitudes (0..1) of YOUR voice — a real spectrum for the orb. */
@@ -313,6 +369,7 @@ export class VoiceEngine {
     this.epoch++;
     try { this.vad?.destroy(); } catch { /* */ }
     this.vad = null;
+    this.pushActive = false;
     try { this.micSrc?.disconnect(); } catch { /* */ }
     try { void this.specCtx?.close(); } catch { /* */ }
     this.micSrc = null; this.micAnalyser = null; this.micFreq = null; this.specCtx = null;

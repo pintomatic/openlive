@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
-import { Mic, MicOff, Video, VideoOff, ScreenShare, ScreenShareOff, ChevronUp, Minimize2, PanelRightOpen } from "lucide-react";
+import { AudioLines, Mic, MicOff, Video, VideoOff, ScreenShare, ScreenShareOff, ChevronUp, Minimize2, PanelRightOpen } from "lucide-react";
 import { useLiveStore, type LivePhase, type DeviceOpt } from "@/lib/live/liveStore";
+import type { VoiceInputMode } from "@/lib/live/voiceEngine";
 import { toolMeta } from "@/lib/live/toolMeta";
 import { useUi } from "@/lib/uiStore";
 import { Orb } from "./Orb";
@@ -21,8 +22,10 @@ const PHASE_LABEL: Record<LivePhase, string> = {
 
 export interface InCallProps {
   chatId: string; phase: LivePhase; muted: boolean;
+  inputMode: VoiceInputMode; pushActive: boolean;
   cameraOn: boolean; screenOn: boolean; cameraStream: MediaStream | null; screenStream: MediaStream | null; error?: string;
   toggleMute: () => void;
+  setInputMode: (mode: VoiceInputMode) => void; togglePushToTalk: () => void;
   toggleCamera: () => void | Promise<void>; toggleScreen: () => void | Promise<void>;
   setMic: (id: string) => void; setCam: (id: string) => void;
   getLevels: () => { mic: number; agent: number };
@@ -31,8 +34,8 @@ export interface InCallProps {
 }
 
 export function InCall(props: InCallProps) {
-  const { chatId, phase, muted, cameraOn, screenOn, cameraStream, screenStream, error,
-    toggleMute, toggleCamera, toggleScreen, setMic, setCam, getLevels, getBands, onEnd } = props;
+  const { chatId, phase, muted, inputMode, pushActive, cameraOn, screenOn, cameraStream, screenStream, error,
+    toggleMute, setInputMode, togglePushToTalk, toggleCamera, toggleScreen, setMic, setCam, getLevels, getBands, onEnd } = props;
   const { userCaption, userPartial, agentCaption, agentCaptionMs, toolStatus, warming, mics, cams, micId, camId } = useLiveStore();
   const setMinimized = useUi((s) => s.setMinimized);
   const reduce = useReducedMotion();
@@ -75,7 +78,7 @@ export function InCall(props: InCallProps) {
 
   // Status line: a live tool cue while a tool runs, "Warming up…" right after
   // connecting (both blue shimmer), otherwise the plain phase label.
-  const statusLabel = toolStatus ? `${toolMeta(toolStatus).active}…` : warming ? "Warming up…" : PHASE_LABEL[phase];
+  const statusLabel = toolStatus ? `${toolMeta(toolStatus).active}…` : warming ? "Warming up…" : inputMode === "push-to-talk" && phase === "idle" ? "Ready" : PHASE_LABEL[phase];
   const statusBusy = !!toolStatus || warming;
 
   return (
@@ -118,8 +121,13 @@ export function InCall(props: InCallProps) {
 
           {/* control bar — a stable width regardless of sharing */}
           <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface px-2.5 py-2 shadow-[0_10px_34px_-10px_rgba(0,0,0,0.4)]">
-            <ControlWithMenu on={!muted} icon={muted ? MicOff : Mic} danger={muted} title={muted ? "Unmute" : "Mute"} onClick={toggleMute}
-              devices={mics} activeId={micId} onPick={setMic} label="Microphone" />
+            <ModeSwitch mode={inputMode} onChange={setInputMode} />
+            {inputMode === "conversation" ? (
+              <ControlWithMenu on={!muted} icon={muted ? MicOff : Mic} danger={muted} title={muted ? "Resume conversation" : "Pause conversation"} onClick={toggleMute}
+                devices={mics} activeId={micId} onPick={setMic} label="Microphone" />
+            ) : (
+              <IconBtn on={pushActive} title={pushActive ? "Send" : "Talk"} onClick={togglePushToTalk} icon={Mic} />
+            )}
             <ControlWithMenu on={cameraOn} icon={cameraOn ? Video : VideoOff} title={cameraOn ? "Turn camera off" : "Turn camera on"} onClick={() => void toggleCamera()}
               devices={cams} activeId={camId} onPick={setCam} label="Camera" />
             <IconBtn on={screenOn} title={screenOn ? "Stop sharing screen" : "Share screen"} onClick={() => void toggleScreen()} icon={screenOn ? ScreenShareOff : ScreenShare} />
@@ -132,6 +140,23 @@ export function InCall(props: InCallProps) {
         {/* transcript sidebar — resizable + collapsible */}
         {panelOpen && <TranscriptPanel chatId={chatId} width={panelW} onResize={setPanelW} onClose={() => setPanelOpen(false)} />}
       </div>
+    </div>
+  );
+}
+
+function ModeSwitch({ mode, onChange }: { mode: VoiceInputMode; onChange: (mode: VoiceInputMode) => void }) {
+  return (
+    <div className="flex h-9 items-center rounded-full bg-foreground/[0.06] p-0.5" role="group" aria-label="Voice mode">
+      <button type="button" title="Conversation mode" aria-label="Conversation mode" aria-pressed={mode === "conversation"}
+        onClick={() => onChange("conversation")}
+        className={cn("grid size-8 place-items-center rounded-full transition", mode === "conversation" ? "bg-surface text-foreground shadow-sm" : "text-faint hover:text-muted-foreground")}>
+        <AudioLines className="size-4" />
+      </button>
+      <button type="button" title="Push-to-talk mode" aria-label="Push-to-talk mode" aria-pressed={mode === "push-to-talk"}
+        onClick={() => onChange("push-to-talk")}
+        className={cn("grid size-8 place-items-center rounded-full transition", mode === "push-to-talk" ? "bg-surface text-foreground shadow-sm" : "text-faint hover:text-muted-foreground")}>
+        <Mic className="size-4" />
+      </button>
     </div>
   );
 }

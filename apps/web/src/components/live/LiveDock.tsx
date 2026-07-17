@@ -16,8 +16,8 @@ import { MiniBar } from "./MiniBar";
 // mic/camera, model download, model pick), then the full-screen in-call view
 // (orb + transcript) once active.
 export function LiveDock({ chatId, onExit }: { chatId: string; onExit: () => void }) {
-  const { start, stop, download, toggleMute, toggleCamera, toggleScreen, getLevels, getBands, refreshDevices, setMic, setCam } = useLiveSession(chatId);
-  const { active, phase, modelsDownloaded, downloading, downloadPct, downloadLoaded, downloadTotal, downloadModels, muted, cameraOn, screenOn, cameraStream, screenStream, error, mics, cams, micId, camId } = useLiveStore();
+  const { start, stop, download, toggleMute, toggleCamera, toggleScreen, setInputMode, togglePushToTalk, getLevels, getBands, refreshDevices, setMic, setCam } = useLiveSession(chatId);
+  const { active, phase, modelsDownloaded, downloading, downloadPct, downloadLoaded, downloadTotal, downloadModels, muted, inputMode, pushActive, cameraOn, screenOn, cameraStream, screenStream, error, mics, cams, micId, camId } = useLiveStore();
   const openSettings = useUi((s) => s.openSettings);
   const minimized = useUi((s) => s.minimized);
   const setMinimized = useUi((s) => s.setMinimized);
@@ -54,15 +54,15 @@ export function LiveDock({ chatId, onExit }: { chatId: string; onExit: () => voi
       </AnimatePresence>
 
       {active && minimized && (
-        <MiniBar phase={phase} muted={muted} cameraOn={cameraOn} screenOn={screenOn}
+        <MiniBar phase={phase} muted={muted} inputMode={inputMode} pushActive={pushActive} cameraOn={cameraOn} screenOn={screenOn}
           cameraStream={cameraStream} screenStream={screenStream}
-          toggleMute={toggleMute} toggleCamera={toggleCamera} toggleScreen={toggleScreen}
+          toggleMute={toggleMute} togglePushToTalk={togglePushToTalk} toggleCamera={toggleCamera} toggleScreen={toggleScreen}
           getLevels={getLevels} getBands={getBands} onEnd={end} />
       )}
       {active && !minimized && (
-        <InCall chatId={chatId} phase={phase} muted={muted} cameraOn={cameraOn} screenOn={screenOn}
+        <InCall chatId={chatId} phase={phase} muted={muted} inputMode={inputMode} pushActive={pushActive} cameraOn={cameraOn} screenOn={screenOn}
           cameraStream={cameraStream} screenStream={screenStream} error={error}
-          toggleMute={toggleMute} toggleCamera={toggleCamera} toggleScreen={toggleScreen}
+          toggleMute={toggleMute} setInputMode={setInputMode} togglePushToTalk={togglePushToTalk} toggleCamera={toggleCamera} toggleScreen={toggleScreen}
           setMic={(id) => void setMic(id)} setCam={setCam}
           getLevels={getLevels} getBands={getBands} onEnd={end} />
       )}

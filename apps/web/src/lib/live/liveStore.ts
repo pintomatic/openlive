@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { ModelProgress } from "./models";
+import type { VoiceInputMode } from "./voiceEngine";
 
 export type LivePhase = "off" | "connecting" | "loading" | "reconnecting" | "idle" | "listening" | "thinking" | "speaking";
 
@@ -15,6 +16,8 @@ interface LiveState {
   downloadTotal: number;  // bytes total known so far
   downloadModels: ModelProgress[]; // per-model breakdown for the download UI
   muted: boolean;
+  inputMode: VoiceInputMode;
+  pushActive: boolean;
   cameraOn: boolean;
   screenOn: boolean;
   screenStream: MediaStream | null;
@@ -45,6 +48,8 @@ export const useLiveStore = create<LiveState>((set) => ({
   downloadTotal: 0,
   downloadModels: [],
   muted: false,
+  inputMode: "conversation",
+  pushActive: false,
   cameraOn: false,
   screenOn: false,
   screenStream: null,
