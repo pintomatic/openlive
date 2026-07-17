@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, Video, VideoOff } from "lucide-react";
+import { ArrowRight, Mic, ShieldCheck, Video, VideoOff } from "lucide-react";
 import type { DeviceOpt } from "@/lib/live/liveStore";
 import type { ModelProgress } from "@/lib/live/models";
 import { hasWebGPU } from "@/lib/live/models";
@@ -67,14 +67,13 @@ export function PreCall({ mics, cams, micId, camId, onMic, onCam, error, modelsD
 }) {
   const browserVoice = typeof navigator !== "undefined" && preferNativeVoice();
   return (
-    <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
-      <div className="m-auto flex w-full max-w-sm flex-col items-center gap-4 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 text-center md:px-6 md:py-6">
-        <div className="space-y-1">
-          <h2 className="text-[18px] font-semibold tracking-tight">Talk with OpenLive</h2>
-          <p className="max-w-sm text-[13px] text-muted-foreground">
-            {browserVoice
-              ? "It listens as you speak, answers out loud, and can see through your camera. Mobile voice uses your browser's built-in speech service."
-              : "It listens as you speak, answers out loud, and can see through your camera. The voice runs privately on your device."}
+    <div className="relative z-10 flex flex-1 flex-col overflow-y-auto bg-surface">
+      <div className="mx-auto flex w-full max-w-sm flex-col gap-4 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5 md:px-6 md:py-6">
+        <div className="border-b border-border pb-4 text-left">
+          <p className="mb-1 text-[10px] font-medium uppercase text-muted-foreground">Device check</p>
+          <h2 className="text-[21px] font-semibold">Ready to talk</h2>
+          <p className="mt-1.5 text-[12px] text-muted-foreground">
+            {browserVoice ? "Device voice ready" : "Private voice ready"}
           </p>
           {typeof navigator !== "undefined" && !browserVoice && !hasWebGPU() && (
             <p className="mx-auto max-w-xs rounded-lg border border-arc/30 bg-arc/10 px-2.5 py-1.5 text-[11.5px] text-arc">
@@ -86,13 +85,16 @@ export function PreCall({ mics, cams, micId, camId, onMic, onCam, error, modelsD
         <CameraPreview camId={camId} onGranted={refreshDevices} />
         <MicMeter micId={micId} onGranted={refreshDevices} />
 
-        <div className="w-full max-w-xs space-y-2">
+        <div className="w-full space-y-2 border-y border-border py-3">
           <DeviceSelect icon={Mic} opts={mics} value={micId} onChange={onMic} />
           <DeviceSelect icon={Video} opts={cams} value={camId} onChange={onCam} />
         </div>
 
-        <ModelQuickPick onOpenSettings={onOpenSettings} />
-        {browserVoice && <VoicePicker />}
+        <div className="w-full space-y-3">
+          <div className="flex items-center gap-2 text-[10px] font-medium uppercase text-muted-foreground"><ShieldCheck className="size-3.5" /> Session</div>
+          <ModelQuickPick onOpenSettings={onOpenSettings} />
+          {browserVoice && <VoicePicker />}
+        </div>
 
         {downloading ? (
           <div className="flex flex-col items-center gap-2">
@@ -101,14 +103,14 @@ export function PreCall({ mics, cams, micId, camId, onMic, onCam, error, modelsD
           </div>
         ) : !modelsDownloaded ? (
           <div className="flex flex-col items-center gap-2">
-            <button onClick={onDownload} className="rounded-full bg-accent px-6 py-2.5 text-[14px] font-medium text-accent-foreground transition duration-150 hover:scale-[1.03] hover:opacity-90 active:scale-95">
+            <button onClick={onDownload} className="h-12 w-full rounded-md bg-accent px-6 text-[14px] font-medium text-accent-foreground transition hover:opacity-90 active:scale-[0.99]">
               Download AI models
             </button>
-            <p className="max-w-[16rem] text-[11px] text-faint">A one-time download of 3 small AI models (speech, voice, turn-taking) that run fully on your device — nothing is sent to a server.</p>
+            <p className="text-[11px] text-faint">One-time device setup</p>
           </div>
         ) : (
-          <button onClick={onStart} className="rounded-full bg-accent px-7 py-2.5 text-[14px] font-medium text-accent-foreground transition duration-150 hover:scale-[1.03] hover:opacity-90 active:scale-95">
-            Start
+          <button onClick={onStart} className="flex h-12 w-full items-center justify-between rounded-md bg-accent px-5 text-[14px] font-medium text-accent-foreground transition hover:opacity-90 active:scale-[0.99]">
+            Start conversation <ArrowRight className="size-5" />
           </button>
         )}
         {error && <p className="max-w-sm text-[12px] text-danger">{error}</p>}
@@ -137,7 +139,7 @@ function CameraPreview({ camId, onGranted }: { camId?: string; onGranted: () => 
     return () => { stopped = true; stream?.getTracks().forEach((t) => t.stop()); };
   }, [camId, onGranted]);
   return (
-    <div className="relative aspect-[4/3] max-h-[28dvh] w-full max-w-[16rem] overflow-hidden rounded-lg border border-border/60 bg-black shadow-lg md:max-h-[36vh]">
+    <div className="relative aspect-[4/3] max-h-[30dvh] w-full overflow-hidden rounded-md border border-border bg-black shadow-sm md:max-h-[36vh]">
       <video ref={ref} autoPlay muted playsInline className={cn("h-full w-full object-cover transition-opacity", state === "on" ? "opacity-100" : "opacity-0")} />
       {state !== "on" && (
         <div className="absolute inset-0 grid place-items-center gap-1 text-center">

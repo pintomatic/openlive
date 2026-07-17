@@ -86,17 +86,27 @@ export function InCall(props: InCallProps) {
   const statusBusy = !!toolStatus || warming;
 
   return (
-    <div className={cn("fixed inset-0 z-40 flex flex-col bg-background", !reduce && "animate-live-in")}>
+    <div className={cn("fixed inset-0 z-40 flex flex-col bg-surface", !reduce && "animate-live-in")}>
       <TopBar />
 
       <div className="flex min-h-0 flex-1">
         {/* stage — orb hero, floating tiles, control bar */}
-        <main className="relative min-w-0 flex-1 overflow-hidden">
+        <main className="relative min-w-0 flex-1 overflow-hidden bg-surface">
           {!sharing && (
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-20">
-              <div className="scale-[0.78] sm:scale-100"><Orb phase={phase} getLevels={getLevels} getBands={getBands} size={220} /></div>
-              <p className="mt-2 min-h-[28px] max-w-xl px-7 text-center text-[17px] leading-snug sm:mt-8 sm:text-[20px]">{words}</p>
-              <p className={cn("mt-1 text-[12px] uppercase tracking-wide", statusBusy ? "arc-shimmer font-medium" : "text-faint")}>{statusLabel}</p>
+            <div className="pointer-events-none absolute inset-0 flex flex-col px-5 pb-24 pt-4 sm:px-8 sm:pt-6">
+              <div className="mx-auto flex w-full max-w-3xl items-center justify-between border-b border-border pb-3 text-[10px] font-medium uppercase text-muted-foreground">
+                <span>Kernal session</span>
+                <span className={cn("flex items-center gap-2", statusBusy && "arc-shimmer")}><span className="size-1.5 rounded-full bg-success" />{statusLabel}</span>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-4">
+                <div className="scale-[0.82] sm:scale-100"><Orb phase={phase} getLevels={getLevels} getBands={getBands} size={220} /></div>
+              </div>
+              <div className="mx-auto w-full max-w-3xl border-t border-border pt-4">
+                <p className="mb-1 text-[10px] font-medium uppercase text-muted-foreground">Live response</p>
+                <p className="min-h-[50px] max-w-2xl text-left text-[18px] leading-snug sm:text-[20px]" aria-live="polite">
+                  {words ?? <span className="text-muted-foreground">Listening for you</span>}
+                </p>
+              </div>
             </div>
           )}
 
@@ -107,7 +117,7 @@ export function InCall(props: InCallProps) {
 
           {!panelOpen && (
             <button onClick={() => setPanelOpen(true)} title="Show transcript" aria-label="Show transcript"
-              className="absolute right-3 top-3 z-20 grid size-9 place-items-center rounded-lg border border-border bg-surface text-muted-foreground transition hover:text-foreground">
+              className="absolute right-4 top-4 z-20 grid size-9 place-items-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition hover:text-foreground">
               <PanelRightOpen className="size-4" />
             </button>
           )}
@@ -115,7 +125,7 @@ export function InCall(props: InCallProps) {
           {/* Status pill (orb + caption) while sharing — floats ABOVE the control bar
               so toggling a screen/camera share never resizes the bar itself. */}
           {sharing && (
-            <div className="absolute bottom-[88px] left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 shadow-[0_10px_34px_-10px_rgba(0,0,0,0.4)]">
+            <div className="absolute bottom-[88px] left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 shadow-lg">
               <Orb phase={phase} getLevels={getLevels} getBands={getBands} size={26} />
               <span className="max-w-[260px] truncate text-[12.5px]" aria-live="polite">
                 {words ?? <span className={cn(statusBusy ? "arc-shimmer font-medium" : "text-muted-foreground")}>{statusLabel}</span>}
@@ -124,20 +134,22 @@ export function InCall(props: InCallProps) {
           )}
 
           {/* control bar — a stable width regardless of sharing */}
-          <div className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-card/95 px-2 py-2 shadow-[0_10px_34px_-10px_rgba(0,0,0,0.4)] backdrop-blur sm:gap-2 sm:rounded-full sm:px-2.5">
-            <ModeSwitch mode={inputMode} onChange={setInputMode} />
-            {inputMode === "conversation" ? (
-              <ControlWithMenu on={!muted} icon={muted ? MicOff : Mic} danger={muted} title={muted ? "Resume conversation" : "Pause conversation"} onClick={toggleMute}
-                devices={mics} activeId={micId} onPick={setMic} label="Microphone" />
-            ) : (
-              <IconBtn on={pushActive} title={pushActive ? "Send" : "Talk"} onClick={togglePushToTalk} icon={Mic} />
-            )}
-            <ControlWithMenu on={cameraOn} icon={cameraOn ? Video : VideoOff} title={cameraOn ? "Turn camera off" : "Turn camera on"} onClick={() => void toggleCamera()}
-              devices={cams} activeId={camId} onPick={setCam} label="Camera" />
-            <IconBtn on={screenOn} title={screenOn ? "Stop sharing screen" : "Share screen"} onClick={() => void toggleScreen()} icon={screenOn ? ScreenShareOff : ScreenShare} />
-            <span className="mx-0.5 h-5 w-px bg-border" />
-            <IconBtn on={false} title="Minimize to floating bar" onClick={() => setMinimized(true)} icon={Minimize2} />
-            <EndCallButton onEnd={onEnd} />
+          <div className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-background px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-10px_30px_-24px_rgba(0,0,0,0.5)]">
+            <div className="mx-auto flex w-full max-w-xl items-center justify-between gap-1">
+              <ModeSwitch mode={inputMode} onChange={setInputMode} />
+              {inputMode === "conversation" ? (
+                <ControlWithMenu on={!muted} icon={muted ? MicOff : Mic} danger={muted} title={muted ? "Resume conversation" : "Pause conversation"} onClick={toggleMute}
+                  devices={mics} activeId={micId} onPick={setMic} label="Microphone" />
+              ) : (
+                <IconBtn on={pushActive} title={pushActive ? "Send" : "Talk"} onClick={togglePushToTalk} icon={Mic} />
+              )}
+              <ControlWithMenu on={cameraOn} icon={cameraOn ? Video : VideoOff} title={cameraOn ? "Turn camera off" : "Turn camera on"} onClick={() => void toggleCamera()}
+                devices={cams} activeId={camId} onPick={setCam} label="Camera" />
+              <IconBtn on={screenOn} title={screenOn ? "Stop sharing screen" : "Share screen"} onClick={() => void toggleScreen()} icon={screenOn ? ScreenShareOff : ScreenShare} />
+              <span className="mx-0.5 h-6 w-px bg-border" />
+              <IconBtn on={false} title="Minimize to floating bar" onClick={() => setMinimized(true)} icon={Minimize2} />
+              <EndCallButton onEnd={onEnd} size="size-10" />
+            </div>
           </div>
         </main>
 
@@ -150,15 +162,15 @@ export function InCall(props: InCallProps) {
 
 function ModeSwitch({ mode, onChange }: { mode: VoiceInputMode; onChange: (mode: VoiceInputMode) => void }) {
   return (
-    <div className="flex h-9 items-center rounded-full bg-foreground/[0.06] p-0.5" role="group" aria-label="Voice mode">
+    <div className="flex h-10 items-center rounded-md bg-surface p-0.5" role="group" aria-label="Voice mode">
       <button type="button" title="Conversation mode" aria-label="Conversation mode" aria-pressed={mode === "conversation"}
         onClick={() => onChange("conversation")}
-        className={cn("grid size-8 place-items-center rounded-full transition", mode === "conversation" ? "bg-surface text-foreground shadow-sm" : "text-faint hover:text-muted-foreground")}>
+        className={cn("grid size-9 place-items-center rounded-md transition", mode === "conversation" ? "bg-background text-foreground shadow-sm" : "text-faint hover:text-muted-foreground")}>
         <AudioLines className="size-4" />
       </button>
       <button type="button" title="Push-to-talk mode" aria-label="Push-to-talk mode" aria-pressed={mode === "push-to-talk"}
         onClick={() => onChange("push-to-talk")}
-        className={cn("grid size-8 place-items-center rounded-full transition", mode === "push-to-talk" ? "bg-surface text-foreground shadow-sm" : "text-faint hover:text-muted-foreground")}>
+        className={cn("grid size-9 place-items-center rounded-md transition", mode === "push-to-talk" ? "bg-background text-foreground shadow-sm" : "text-faint hover:text-muted-foreground")}>
         <Mic className="size-4" />
       </button>
     </div>
@@ -168,7 +180,7 @@ function ModeSwitch({ mode, onChange }: { mode: VoiceInputMode; onChange: (mode:
 function IconBtn({ on, title, onClick, icon: Icon, danger }: { on: boolean; title: string; onClick: () => void; icon: typeof Mic; danger?: boolean }) {
   return (
     <button onClick={onClick} title={title} aria-label={title} aria-pressed={on}
-      className={cn("grid size-9 place-items-center rounded-full transition hover:bg-foreground/10",
+      className={cn("grid size-10 place-items-center rounded-md transition hover:bg-surface",
         danger ? "text-danger" : on ? "text-foreground" : "text-muted-foreground")}>
       <Icon className="size-4" />
     </button>

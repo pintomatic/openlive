@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Settings2, Minimize2, Plus, MessageSquare, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { OpenLiveOrb } from "@/components/OpenLiveOrb";
+import { OpenLiveBrand } from "@/components/OpenLiveBrand";
 import { useUi } from "@/lib/uiStore";
 import { cn } from "@/lib/cn";
 
@@ -86,21 +86,20 @@ export function TopBar() {
   const setMinimized = useUi((s) => s.setMinimized);
 
   return (
-    <header className={cn("flex h-12 shrink-0 items-center justify-between border-b border-border pr-3",
-      isDesktop ? "pl-[80px]" : "pl-3",
+    <header className={cn("flex h-16 shrink-0 items-center justify-between border-b border-border bg-background pr-3 pt-[env(safe-area-inset-top)]",
+      isDesktop ? "pl-[80px]" : "pl-4",
       isDesktop && "[-webkit-app-region:drag]")}>
-      <div className="flex items-center gap-1">
-        <div className="flex items-center gap-2 pr-3">
-          <OpenLiveOrb size={26} />
-          <span className="text-[14px] font-semibold tracking-tight">OpenLive</span>
-        </div>
+      <div className="flex items-center gap-2">
+        <OpenLiveBrand compact />
+        <div className="mx-1 h-5 w-px bg-border" />
         <Conversations />
       </div>
       <div className={cn("flex items-center gap-1", noDrag)}>
+        <div className="mr-1 hidden items-center gap-1.5 text-[10px] font-medium uppercase text-muted-foreground sm:flex"><span className="size-1.5 rounded-full bg-success" />Live</div>
         <button onClick={openSettings} title="Settings" aria-label="Settings"
-          className="grid size-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"><Settings2 className="size-4" /></button>
+          className="grid size-9 place-items-center rounded-md text-muted-foreground transition hover:bg-surface hover:text-foreground"><Settings2 className="size-4" /></button>
         <button onClick={() => setMinimized(true)} title="Minimize to floating bar" aria-label="Minimize"
-          className="grid size-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"><Minimize2 className="size-4" /></button>
+          className="grid size-9 place-items-center rounded-md text-muted-foreground transition hover:bg-surface hover:text-foreground"><Minimize2 className="size-4" /></button>
       </div>
     </header>
   );

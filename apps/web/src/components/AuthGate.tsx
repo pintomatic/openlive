@@ -3,6 +3,7 @@
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { Fingerprint, KeyRound, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { OpenLiveBrand } from "./OpenLiveBrand";
 import { OpenLiveMark } from "./OpenLiveMark";
 
 interface AuthStatus {
@@ -113,13 +114,19 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
 function GateFrame({ children, busy = false }: { children?: ReactNode; busy?: boolean }) {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-background px-6 text-center">
-      <OpenLiveMark size={76} />
-      <div>
-        <h1 className="text-[24px] font-semibold">OpenLive</h1>
-        <p className="mt-1 text-[12px] uppercase text-muted-foreground">Kernal voice</p>
-      </div>
-      {children ?? (busy ? <LoaderCircle className="size-5 animate-spin text-muted-foreground" /> : null)}
+    <main className="flex min-h-dvh flex-col bg-background">
+      <header className="flex h-[72px] shrink-0 items-center border-b border-border px-4 pt-[env(safe-area-inset-top)] sm:px-6">
+        <OpenLiveBrand />
+      </header>
+      <section className="flex min-h-0 flex-1 flex-col items-center justify-center bg-surface px-6 text-center">
+        <div className="mb-6 flex size-28 items-center justify-center rounded-lg border border-border bg-background shadow-sm">
+          <OpenLiveMark size={72} />
+        </div>
+        <p className="mb-2 text-[11px] font-medium uppercase text-muted-foreground">Private access</p>
+        <h1 className="mb-7 text-[24px] font-semibold">Open your workspace</h1>
+        {children ?? (busy ? <LoaderCircle className="size-5 animate-spin text-muted-foreground" /> : null)}
+      </section>
+      <footer className="h-[max(1rem,env(safe-area-inset-bottom))] shrink-0 border-t border-border bg-background" />
     </main>
   );
 }

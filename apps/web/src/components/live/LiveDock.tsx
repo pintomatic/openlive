@@ -11,6 +11,7 @@ import { chatStore } from "@/lib/chatStore";
 import { PreCall } from "./LiveStage";
 import { InCall } from "./InCall";
 import { MiniBar } from "./MiniBar";
+import { OpenLiveBrand } from "@/components/OpenLiveBrand";
 
 // Hosts one live call: a centered setup MODAL before the call (permissions,
 // mic/camera, model download, model pick), then the full-screen in-call view
@@ -40,8 +41,9 @@ export function LiveDock({ chatId, onExit }: { chatId: string; onExit: () => voi
               initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 16, scale: 0.97 }}
               transition={{ type: "spring", stiffness: 320, damping: 30 }}
               className="relative z-10 flex h-dvh w-full flex-col overflow-hidden bg-card shadow-[0_24px_70px_-20px_rgba(0,0,0,0.55)] md:h-auto md:max-h-[90vh] md:max-w-md md:rounded-lg md:border md:border-border">
-              <div className="flex justify-end p-2">
-                <button onClick={end} title="Close" aria-label="Close live" className="grid size-8 place-items-center rounded-full text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"><X className="size-4" /></button>
+              <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4 pt-[env(safe-area-inset-top)]">
+                <OpenLiveBrand compact />
+                <button onClick={end} title="Close" aria-label="Close live" className="grid size-9 place-items-center rounded-md border border-border text-muted-foreground transition hover:bg-surface hover:text-foreground"><X className="size-4" /></button>
               </div>
               <PreCall mics={mics} cams={cams} micId={micId} camId={camId} onMic={(id) => void setMic(id)} onCam={setCam}
                 error={error} modelsDownloaded={modelsDownloaded} downloading={downloading} downloadPct={downloadPct}

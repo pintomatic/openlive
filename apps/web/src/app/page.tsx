@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Settings2, MessageSquare, Plus } from "lucide-react";
+import { ArrowRight, MessageSquare, Settings2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useUi } from "@/lib/uiStore";
 import { LiveDock } from "@/components/live/LiveDock";
 import { SettingsModal } from "@/components/settings/SettingsModal";
 import { OpenLiveMark } from "@/components/OpenLiveMark";
+import { OpenLiveBrand } from "@/components/OpenLiveBrand";
 import { useAppVersion } from "@/lib/useAppVersion";
 import { loadModels, modelsCached, modelsReady } from "@/lib/live/models";
 
@@ -36,7 +37,7 @@ function ResumeMenu({ onPick }: { onPick: (id: string) => void }) {
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)} title="Resume a past conversation"
-        className="flex items-center gap-2 rounded-lg border border-border px-5 py-3 text-[14px] text-muted-foreground transition hover:border-border-heavy hover:text-foreground">
+        className="flex h-12 items-center justify-center gap-2 rounded-md border border-border px-5 text-[14px] text-muted-foreground transition hover:border-border-heavy hover:text-foreground">
         <MessageSquare className="size-4" /> Resume
       </button>
       {open && (
@@ -79,36 +80,48 @@ export default function Home() {
   const resume = (id: string) => { resumeChat(id); setLiveOpen(true); };
 
   return (
-    <main className="relative z-10 flex min-h-dvh flex-col items-center justify-center px-6 text-center">
+    <main className="relative z-10 flex min-h-dvh flex-col bg-background text-left">
       {!minimized && (
         <>
           {/* Frameless-window drag handle: a top strip clear of the window controls
               (top-left) and the settings button (top-right). Desktop only (.desktop). */}
           <div className="app-drag fixed left-[90px] right-16 top-0 z-0 h-10" />
-          <button onClick={openSettings} aria-label="Settings"
-            className="absolute right-4 top-4 grid size-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground">
-            <Settings2 className="size-5" />
-          </button>
+          <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-border px-4 pt-[env(safe-area-inset-top)] sm:px-6">
+            <OpenLiveBrand />
+            <button onClick={openSettings} aria-label="Settings"
+              className="grid size-10 place-items-center rounded-md border border-border text-muted-foreground transition hover:bg-surface hover:text-foreground">
+              <Settings2 className="size-[18px]" />
+            </button>
+          </header>
 
-          <div className="flex flex-col items-center gap-6">
-            <OpenLiveMark />
-            <div className="space-y-2">
-              <h1 className="text-[32px] font-semibold tracking-tight">OpenLive</h1>
-              <p className="max-w-sm text-[13px] uppercase text-muted-foreground">Kernal voice</p>
+          <section className="relative flex min-h-0 flex-1 bg-surface px-5 py-8 sm:px-8 sm:py-10">
+            <div className="mx-auto flex w-full max-w-3xl flex-col">
+              <div className="flex items-center justify-between border-b border-border pb-3 text-[11px] font-medium uppercase text-muted-foreground">
+                <span>Private workspace</span>
+                <span className="flex items-center gap-2"><span className="size-2 rounded-full bg-success" />Ready</span>
+              </div>
+              <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+                <OpenLiveMark size={136} />
+                <h1 className="mt-8 text-[30px] font-semibold sm:text-[34px]">OpenLive</h1>
+                <p className="mt-2 text-[13px] text-muted-foreground">Kernal is connected</p>
+              </div>
+              <div className="border-t border-border pt-3 text-[11px] text-muted-foreground">
+                Continuous conversation
+              </div>
             </div>
-            <div className="flex items-center gap-3">
+          </section>
+
+          <footer className="shrink-0 border-t border-border bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-6">
+            <div className="mx-auto flex w-full max-w-md gap-3">
               <button onClick={startNew}
-                className="flex items-center gap-2 rounded-lg bg-accent px-7 py-3 text-[15px] font-medium text-accent-foreground shadow-lg transition duration-150 hover:opacity-90 active:scale-95">
-                <Plus className="size-5" /> Start
+                className="flex h-12 min-w-0 flex-1 items-center justify-between rounded-md bg-accent px-5 text-[15px] font-medium text-accent-foreground shadow-sm transition hover:opacity-90 active:scale-[0.99]">
+                Start conversation <ArrowRight className="size-5" />
               </button>
               <ResumeMenu onPick={resume} />
             </div>
-          </div>
-
-          <footer className="absolute inset-x-0 bottom-4 flex items-center justify-center text-[11px] text-faint">
-            <a href="https://github.com/katipally/openlive/releases" target="_blank" rel="noreferrer" className="transition hover:text-muted-foreground">
+            <div className="mx-auto mt-3 max-w-md text-right text-[10px] text-faint">
               {appVersion ? `v${appVersion}` : "dev"}
-            </a>
+            </div>
           </footer>
         </>
       )}
