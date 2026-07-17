@@ -1,0 +1,49 @@
+{
+  "name": "openlive-voice-benchmark",
+  "description": "Ephemeral A10G benchmark for OpenLive natural voice candidates",
+  "source": {
+    "type": "S3",
+    "location": "openlive-voice-benchmark-759498975417/source/openlive-voice-benchmark.zip",
+    "buildspec": "buildspec.yml"
+  },
+  "artifacts": {
+    "type": "S3",
+    "location": "openlive-voice-benchmark-759498975417",
+    "path": "artifacts",
+    "namespaceType": "BUILD_ID",
+    "name": "openlive-voice-benchmark",
+    "packaging": "ZIP",
+    "overrideArtifactName": true,
+    "encryptionDisabled": false
+  },
+  "environment": {
+    "type": "LINUX_GPU_CONTAINER",
+    "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
+    "computeType": "BUILD_GENERAL1_SMALL",
+    "environmentVariables": [],
+    "privilegedMode": false,
+    "imagePullCredentialsType": "CODEBUILD"
+  },
+  "serviceRole": "arn:aws:iam::759498975417:role/OpenLiveVoiceBenchmarkCodeBuildRole",
+  "timeoutInMinutes": 45,
+  "queuedTimeoutInMinutes": 10,
+  "logsConfig": {
+    "cloudWatchLogs": {
+      "status": "ENABLED",
+      "groupName": "/aws/codebuild/openlive-voice-benchmark"
+    },
+    "s3Logs": {
+      "status": "DISABLED"
+    }
+  },
+  "tags": [
+    {
+      "key": "Project",
+      "value": "OpenLive"
+    },
+    {
+      "key": "Purpose",
+      "value": "TemporaryVoiceBenchmark"
+    }
+  ]
+}

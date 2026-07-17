@@ -1,0 +1,49 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  install:
+    commands:
+      - set -euo pipefail
+      - nvidia-smi
+      - yum install -y git git-lfs sox sox-devel libsndfile libsndfile-devel
+      - yum install -y ffmpeg || true
+      - curl -fsSL -o /tmp/miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+      - bash /tmp/miniforge.sh -b -p /opt/conda
+      - export PATH=/opt/conda/bin:$PATH
+      - conda config --set channel_priority strict
+  pre_build:
+    commands:
+      - set -euo pipefail
+      - export PATH=/opt/conda/bin:$PATH
+      - git clone --depth 1 --recursive https://github.com/FunAudioLLM/CosyVoice.git
+      - cp CosyVoice/asset/cross_lingual_prompt.wav reference.wav
+  build:
+    commands:
+      - set -uo pipefail
+      - export PATH=/opt/conda/bin:$PATH
+      - CHATTER_STATUS=0
+      - |
+        if [[ "${RUN_CHATTERBOX:-true}" == "true" ]]; then
+          conda create -y -n chatterbox python=3.11 &&
+          conda run -n chatterbox pip install --no-cache-dir chatterbox-tts &&
+          conda run -n chatterbox python benchmark_chatterbox.py || CHATTER_STATUS=$?
+          conda env remove -y -n chatterbox || true
+        fi
+      - conda create -y -n cosyvoice python=3.10
+      - conda run -n cosyvoice pip install 'setuptools<81' 'numpy==1.26.4' 'Cython==3.0.10'
+      - COSY_STATUS=0
+      - grep -Ev '^(tensorrt-cu12|deepspeed==)' CosyVoice/requirements.txt > CosyVoice/requirements-benchmark.txt
+      - conda run -n cosyvoice pip install --no-build-isolation --no-cache-dir -r CosyVoice/requirements-benchmark.txt || COSY_STATUS=$?
+      - if [[ "$COSY_STATUS" -eq 0 ]]; then conda run -n cosyvoice python -c "from huggingface_hub import snapshot_download; snapshot_download('FunAudioLLM/Fun-CosyVoice3-0.5B-2512', local_dir='CosyVoice/pretrained_models/Fun-CosyVoice3-0.5B')" || COSY_STATUS=$?; fi
+      - if [[ "$COSY_STATUS" -eq 0 ]]; then timeout 600s conda run -n cosyvoice python benchmark_cosyvoice.py || COSY_STATUS=$?; fi
+      - conda run -n cosyvoice python summarize.py || python summarize.py
+      - mkdir -p results; printf '{"chatterbox_exit":%s,"cosyvoice_exit":%s}\n' "$CHATTER_STATUS" "$COSY_STATUS" > results/status.json
+      - test "$CHATTER_STATUS" -eq 0 -a "$COSY_STATUS" -eq 0
+
+artifacts:
+  files:
+    - results/**/*
+  name: openlive-voice-benchmark-$CODEBUILD_BUILD_NUMBER
