@@ -186,7 +186,12 @@ export function useLiveSession(chatId: string) {
         onOpen: () => { set({ phase: "idle", error: undefined, warming: true }); void acquireWakeLock(); },
         onReconnecting: () => set({ phase: "reconnecting" }),
         onClose: () => teardown(),
-        onError: (m) => set({ error: m }),
+        onError: (m) => {
+          set({ error: m });
+          // A delivery or provider error must release native speech recognition
+          // from its waiting state; otherwise iOS stays on "Thinking" forever.
+          if (useLiveStore.getState().phase === "thinking") engine.current?.endAgentTurn();
+        },
         onSse: (e) => {
           if (e.type === "error") { set({ error: e.message }); return; }
           // Warm-up done → drop the "Warming up…" spinner; the first turn is now hot.

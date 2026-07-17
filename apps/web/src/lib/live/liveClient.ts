@@ -24,8 +24,10 @@ export class LiveClient {
   private attempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private healthyTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingTurns: Array<{ message: unknown; timer: ReturnType<typeof setTimeout> }> = [];
   private static MAX_RECONNECT = 4;
   private static HEALTHY_MS = 3000; // a connection must survive this long to "count"
+  private static TURN_DELIVERY_MS = 15_000;
   constructor(private h: LiveHandlers) {}
 
   connect(chatId: string) {
@@ -42,6 +44,7 @@ export class LiveClient {
     ws.binaryType = "arraybuffer";
     ws.onopen = () => {
       this.h.onOpen?.();
+      this.flushPendingTurns();
       // Do NOT zero `attempts` here: on the container path the socket can open and
       // then instantly flap closed, and resetting on every open made "Reconnecting…"
       // loop forever. Only a connection that SURVIVES counts as recovered.
@@ -81,9 +84,32 @@ export class LiveClient {
     this.ws = ws;
   }
 
-  private sendJson(m: unknown) { if (this.ready) this.ws!.send(JSON.stringify(m)); }
+  private sendJson(m: unknown) {
+    if (!this.ready) return false;
+    try { this.ws!.send(JSON.stringify(m)); return true; }
+    catch { return false; }
+  }
+  private flushPendingTurns() {
+    while (this.ready && this.pendingTurns.length) {
+      const pending = this.pendingTurns[0]!;
+      if (!this.sendJson(pending.message)) return;
+      clearTimeout(pending.timer);
+      this.pendingTurns.shift();
+    }
+  }
   userText(text: string, frames?: { data: string; mime: string; source: "camera" | "screen" }[]) {
-    this.sendJson({ t: "user_text", text, ...(frames && frames.length ? { frames } : {}) });
+    const message = { t: "user_text", text, ...(frames && frames.length ? { frames } : {}) };
+    if (this.sendJson(message)) return;
+    const pending = {
+      message,
+      timer: setTimeout(() => {
+        const index = this.pendingTurns.indexOf(pending);
+        if (index < 0) return;
+        this.pendingTurns.splice(index, 1);
+        this.h.onError?.("Connection interrupted before your message could be sent. Please say it again.");
+      }, LiveClient.TURN_DELIVERY_MS),
+    };
+    this.pendingTurns.push(pending);
   }
   cancel(spoken?: string) { this.sendJson({ t: "cancel", ...(spoken ? { spoken } : {}) }); }
   control(action: "camera_on" | "camera_off" | "screen_on" | "screen_off" | "end") { this.sendJson({ t: "control", action }); }
@@ -114,6 +140,8 @@ export class LiveClient {
     this.closedByUser = true;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.healthyTimer) { clearTimeout(this.healthyTimer); this.healthyTimer = null; }
+    for (const pending of this.pendingTurns) clearTimeout(pending.timer);
+    this.pendingTurns = [];
     this.control("end");
     try { this.ws?.close(); } catch { /* */ }
     this.ws = null;

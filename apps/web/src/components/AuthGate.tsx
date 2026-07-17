@@ -12,6 +12,9 @@ interface AuthStatus {
   enrolled: boolean;
   authenticated: boolean;
 }
+const REGISTRATION_MARKER = "openlive-webauthn-registration-start";
+const REGISTRATION_GRACE_MS = 5 * 60_000;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { cache: "no-store", credentials: "same-origin", ...init });
   const body = await response.json().catch(() => ({}));
@@ -26,6 +29,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     const next = await request<AuthStatus>("/auth/status");
+    // iOS can reload the page while finishing passkey registration. Preserve the
+    // registration-issued session exactly once so setup does not immediately ask
+    // for another Face ID assertion; later launches still fail closed as designed.
+    const registrationStarted = Number(localStorage.getItem(REGISTRATION_MARKER) || 0);
+    if (next.enabled && next.enrolled && next.authenticated
+      && registrationStarted > 0 && Date.now() - registrationStarted < REGISTRATION_GRACE_MS) {
+      sessionStorage.setItem("openlive-webauthn-launch", "ok");
+      localStorage.removeItem(REGISTRATION_MARKER);
+    }
     setStatus(next);
     return next;
   }, []);
@@ -58,12 +70,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const register = async () => {
     setBusy(true); setError("");
     try {
+      localStorage.setItem(REGISTRATION_MARKER, String(Date.now()));
       const optionsJSON = await request<Parameters<typeof startRegistration>[0]["optionsJSON"]>("/auth/register/options", { method: "POST" });
       const response = await startRegistration({ optionsJSON });
       await request("/auth/register/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(response) });
       sessionStorage.setItem("openlive-webauthn-launch", "ok");
+      localStorage.removeItem(REGISTRATION_MARKER);
       await refresh();
     } catch (cause: any) {
+      localStorage.removeItem(REGISTRATION_MARKER);
       setError(cause?.name === "NotAllowedError" ? "Face ID setup was cancelled." : String(cause?.message || cause));
     } finally { setBusy(false); }
   };

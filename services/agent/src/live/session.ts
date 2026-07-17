@@ -196,6 +196,7 @@ export class LiveSession {
     if (!text.trim() || this.closed) return;
     await this.ready;
     if (this.closed) return;
+    console.log(`[live] user turn received chat=${this.chatId || "(none)"} chars=${text.trim().length} frames=${frames.length}`);
     // A new utterance during an in-flight turn (barge-in) must NOT be dropped:
     // queue it (append) and the finally below drains it as one turn.
     if (this.turnActive) { this.queuedText = this.queuedText ? `${this.queuedText} ${text}` : text; return; }
