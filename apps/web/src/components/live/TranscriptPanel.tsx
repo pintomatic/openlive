@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Brain, ChevronRight, Loader2, PanelRightClose } from "lucide-react";
 import { useChat, type ChatMsg, type Part } from "@/lib/chatStore";
 import { useLiveStore } from "@/lib/live/liveStore";
@@ -36,9 +36,10 @@ export function TranscriptPanel({ chatId, width, onResize, onClose }: {
   const empty = msgs.length === 0 && !(userPartial && userCaption);
 
   return (
-    <aside style={{ width }} className="relative flex h-full shrink-0 flex-col border-l border-border bg-surface/40 text-left">
+    <aside style={{ "--panel-width": `${width}px` } as CSSProperties}
+      className="fixed inset-x-0 bottom-0 z-30 flex h-[58dvh] w-full shrink-0 flex-col rounded-t-lg border-t border-border bg-card/98 text-left shadow-2xl backdrop-blur md:relative md:inset-auto md:h-full md:w-[var(--panel-width)] md:rounded-none md:border-l md:border-t-0 md:bg-surface/40 md:shadow-none">
       <div onPointerDown={startResize} title="Drag to resize"
-        className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize" />
+        className="absolute inset-y-0 -left-1 z-10 hidden w-2 cursor-col-resize md:block" />
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border pl-4 pr-2 text-[13px] font-semibold">
         Transcript
         <button onClick={onClose} title="Hide transcript" aria-label="Hide transcript"
@@ -53,7 +54,7 @@ export function TranscriptPanel({ chatId, width, onResize, onClose }: {
         ))}
         {userPartial && userCaption && (
           <div className="flex justify-end">
-            <div className="max-w-[85%] rounded-2xl bg-accent/40 px-3 py-1.5 text-[13px] italic leading-relaxed text-foreground">{userCaption}</div>
+            <div className="max-w-[85%] rounded-lg bg-accent/15 px-3 py-1.5 text-[13px] italic leading-relaxed text-foreground">{userCaption}</div>
           </div>
         )}
       </div>
@@ -65,7 +66,7 @@ function Message({ msg, streaming }: { msg: ChatMsg; streaming: boolean }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl bg-accent px-3 py-1.5 text-[13px] leading-relaxed text-accent-foreground">{msg.text}</div>
+        <div className="max-w-[85%] rounded-lg bg-accent px-3 py-1.5 text-[13px] leading-relaxed text-accent-foreground">{msg.text}</div>
       </div>
     );
   }

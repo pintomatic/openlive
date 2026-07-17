@@ -41,24 +41,24 @@
 /* Light — "warm paper": warm off-white page, white cards, near-black ink. */
 :root {
   color-scheme: light;
-  --background: #f5f4f1;
-  --surface: #ecebe6;
+  --background: #ffffff;
+  --surface: #f5f7f5;
   --card: #ffffff;
   --elevated: #ffffff;
   --popover: #ffffff;
-  --foreground: #1a1a18;
-  --muted-foreground: #6a6a66;
+  --foreground: #1a2420;
+  --muted-foreground: #575f5b;
   --faint: rgba(0, 0, 0, 0.45);
   --border: rgba(0, 0, 0, 0.09);
   --border-heavy: rgba(0, 0, 0, 0.16);
-  --accent: #2f6fed;
+  --accent: #2f5842;
   --accent-foreground: #ffffff;
-  --accent-soft: rgba(47, 111, 237, 0.10);
-  --arc: #e2701f;
-  --arc-soft: rgba(226, 112, 31, 0.12);
+  --accent-soft: rgba(47, 88, 66, 0.10);
+  --arc: #5c7a3b;
+  --arc-soft: rgba(92, 122, 59, 0.12);
   --destructive: #dc2626;
   --success: #16a34a;
-  --link-foreground: #2563eb;
+  --link-foreground: #2f5842;
 
   --scrollbar-thumb: rgba(0, 0, 0, 0.16);
   --scrollbar-thumb-hover: rgba(0, 0, 0, 0.26);
@@ -72,24 +72,24 @@
 
 .dark {
   color-scheme: dark;
-  --background: #0b0b0c;
-  --surface: #141416;
-  --card: #1a1a1d;
-  --elevated: #202024;
-  --popover: #202024;
+  --background: #0d1210;
+  --surface: #141b17;
+  --card: #19211d;
+  --elevated: #202a25;
+  --popover: #202a25;
   --foreground: #fafafa;
   --muted-foreground: #a1a1aa;
   --faint: rgba(255, 255, 255, 0.45);
   --border: rgba(255, 255, 255, 0.08);
   --border-heavy: rgba(255, 255, 255, 0.14);
-  --accent: #5b9dff;
-  --accent-foreground: #0b0b0c;
-  --accent-soft: rgba(91, 157, 255, 0.14);
-  --arc: #ff8a3d;
-  --arc-soft: rgba(255, 138, 61, 0.16);
+  --accent: #79aa8d;
+  --accent-foreground: #07100b;
+  --accent-soft: rgba(121, 170, 141, 0.14);
+  --arc: #b6c77b;
+  --arc-soft: rgba(182, 199, 123, 0.16);
   --destructive: #fa423e;
   --success: #40c977;
-  --link-foreground: #8fbcff;
+  --link-foreground: #9bc8ad;
 
   --scrollbar-thumb: rgba(255, 255, 255, 0.14);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.24);

@@ -47,6 +47,7 @@ test("configured gate starts locked and exposes no credential details", async ()
     assert.equal(res.status, 200);
     assert.deepEqual(JSON.parse(res.body), {
       enabled: true, enforced: true, configured: true, enrolled: false,
+      recoveryAuthorized: false,
       authenticated: false, user: null, expiresAt: null,
     });
     assert.equal(gate.authenticate(request("/")).authenticated, false);
@@ -64,4 +65,24 @@ test("lock clears the server session cookie", async () => {
   await gate.handle(request("/auth/lock", "POST"), res, "cesar");
   assert.equal(res.status, 200);
   assert.match(String(res.headers["set-cookie"]), /openlive_session=;.*Max-Age=0/);
+});
+
+test("recovery password creates a short-lived registration grant", async () => {
+  const gate = createWebAuthnGate({
+    OPENLIVE_WEBAUTHN_ENABLED: "1",
+    OPENLIVE_WEBAUTHN_RP_ID: "openlive.example.com",
+    OPENLIVE_WEBAUTHN_ORIGIN: "https://openlive.example.com",
+    OPENLIVE_WEBAUTHN_SESSION_SECRET: "test-secret-with-sufficient-entropy",
+  });
+  const denied = response();
+  await gate.handle(request("/auth/register/options", "POST"), denied, "");
+  assert.equal(denied.status, 403);
+  assert.match(denied.body, /password recovery/i);
+
+  const recovery = response();
+  await gate.handle(request("/auth/recovery"), recovery, "cesar");
+  assert.equal(recovery.status, 302);
+  assert.equal(recovery.headers.location, "/");
+  assert.match(String(recovery.headers["set-cookie"]), /openlive_recovery=/);
+  assert.match(String(recovery.headers["set-cookie"]), /HttpOnly/);
 });

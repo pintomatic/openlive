@@ -1,5 +1,6 @@
 import type { EnginePhase, VoiceEngineHandlers, VoiceInputMode } from "./voiceEngine";
 import { stripMarkdown, SentenceChunker } from "./voiceText";
+import { selectedNativeVoice } from "./voicePreferences";
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
@@ -186,7 +187,9 @@ export class NativeVoiceEngine {
     this.setPhase("speaking");
     this.queuedSpeech++;
     const utterance = new SpeechSynthesisUtterance(spoken);
-    utterance.lang = "en-US";
+    const voice = selectedNativeVoice();
+    if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
+    else utterance.lang = "en-US";
     this.utterances.add(utterance); // iOS WebKit may collect unretained utterances.
     utterance.onstart = () => this.h.onAgentText(spoken, Math.max(800, spoken.length * 45));
     utterance.onend = utterance.onerror = () => {

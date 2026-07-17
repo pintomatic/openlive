@@ -49,7 +49,7 @@ function Conversations() {
     <div ref={ref} className={cn("relative", noDrag)}>
       <button onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground">
-        <MessageSquare className="size-4" /> Conversations <ChevronDown className={cn("size-3.5 transition", open && "rotate-180")} />
+        <MessageSquare className="size-4" /> <span className="hidden sm:inline">Conversations</span> <ChevronDown className={cn("size-3.5 transition", open && "rotate-180")} />
       </button>
       {open && (
         <div className="absolute left-0 z-50 mt-1.5 w-72 overflow-hidden rounded-xl border border-border bg-popover shadow-xl">

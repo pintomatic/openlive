@@ -42,13 +42,17 @@ export function InCall(props: InCallProps) {
   const sharing = cameraOn || screenOn; // orb shrinks into the bar while a visual source is on
 
   // Transcript sidebar: resizable width + open/closed, both remembered.
-  const [panelOpen, setPanelOpen] = useState(() => (typeof window === "undefined" ? true : localStorage.getItem("ol-transcript-open") !== "0"));
+  const [panelOpen, setPanelOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const saved = localStorage.getItem("ol-transcript-open-v2");
+    return saved == null ? window.innerWidth >= 768 : saved !== "0";
+  });
   const [panelW, setPanelW] = useState(() => {
     if (typeof window === "undefined") return 360;
     const v = Number(localStorage.getItem("ol-transcript-w"));
     return v >= 280 && v <= 640 ? v : 360;
   });
-  useEffect(() => { localStorage.setItem("ol-transcript-open", panelOpen ? "1" : "0"); }, [panelOpen]);
+  useEffect(() => { localStorage.setItem("ol-transcript-open-v2", panelOpen ? "1" : "0"); }, [panelOpen]);
   useEffect(() => { localStorage.setItem("ol-transcript-w", String(panelW)); }, [panelW]);
 
   const [agentWindow, setAgentWindow] = useState("");
@@ -89,9 +93,9 @@ export function InCall(props: InCallProps) {
         {/* stage — orb hero, floating tiles, control bar */}
         <main className="relative min-w-0 flex-1 overflow-hidden">
           {!sharing && (
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <Orb phase={phase} getLevels={getLevels} getBands={getBands} size={220} />
-              <p className="mt-8 min-h-[28px] max-w-xl px-6 text-center text-[20px] leading-snug tracking-tight">{words}</p>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-20">
+              <div className="scale-[0.78] sm:scale-100"><Orb phase={phase} getLevels={getLevels} getBands={getBands} size={220} /></div>
+              <p className="mt-2 min-h-[28px] max-w-xl px-7 text-center text-[17px] leading-snug sm:mt-8 sm:text-[20px]">{words}</p>
               <p className={cn("mt-1 text-[12px] uppercase tracking-wide", statusBusy ? "arc-shimmer font-medium" : "text-faint")}>{statusLabel}</p>
             </div>
           )}
@@ -120,7 +124,7 @@ export function InCall(props: InCallProps) {
           )}
 
           {/* control bar — a stable width regardless of sharing */}
-          <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface px-2.5 py-2 shadow-[0_10px_34px_-10px_rgba(0,0,0,0.4)]">
+          <div className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-card/95 px-2 py-2 shadow-[0_10px_34px_-10px_rgba(0,0,0,0.4)] backdrop-blur sm:gap-2 sm:rounded-full sm:px-2.5">
             <ModeSwitch mode={inputMode} onChange={setInputMode} />
             {inputMode === "conversation" ? (
               <ControlWithMenu on={!muted} icon={muted ? MicOff : Mic} danger={muted} title={muted ? "Resume conversation" : "Pause conversation"} onClick={toggleMute}

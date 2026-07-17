@@ -27,11 +27,11 @@ type Palette = { hi: string; mid: string; lo: string; ring: string; glow: string
 // amber working, calm neutral idle.
 function paletteFor(phase: LivePhase): Palette {
   switch (phase) {
-    case "listening": return { hi: "#d8f9e6", mid: "#43c286", lo: "#1f6f47", ring: "#4ade80", glow: "#43c286" };
-    case "speaking": return { hi: "#d9e4ff", mid: "#6f8ce6", lo: "#3a4fb0", ring: "#8ba3f5", glow: "#6f8ce6" };
+    case "listening": return { hi: "#d8f1e1", mid: "#5f9b78", lo: "#244d36", ring: "#79aa8d", glow: "#5f9b78" };
+    case "speaking": return { hi: "#d5eeea", mid: "#4f9e96", lo: "#1f5e59", ring: "#70b7af", glow: "#4f9e96" };
     case "thinking": case "connecting": case "loading": case "reconnecting":
-      return { hi: "#ffe7c4", mid: "#f0a24a", lo: "#b5651c", ring: "#f2a24a", glow: "#f0a24a" };
-    default: return { hi: "#cfe0ff", mid: "#8098c8", lo: "#5a6ea0", ring: "#8ca0e6", glow: "#7f93c8" };
+      return { hi: "#eef1cf", mid: "#a8b968", lo: "#5c6f2d", ring: "#b6c77b", glow: "#a8b968" };
+    default: return { hi: "#e0ebe4", mid: "#779483", lo: "#345544", ring: "#8da999", glow: "#779483" };
   }
 }
 

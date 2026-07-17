@@ -36,7 +36,7 @@ function ResumeMenu({ onPick }: { onPick: (id: string) => void }) {
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)} title="Resume a past conversation"
-        className="flex items-center gap-2 rounded-full border border-border px-5 py-3 text-[14px] text-muted-foreground transition hover:border-border-heavy hover:text-foreground">
+        className="flex items-center gap-2 rounded-lg border border-border px-5 py-3 text-[14px] text-muted-foreground transition hover:border-border-heavy hover:text-foreground">
         <MessageSquare className="size-4" /> Resume
       </button>
       {open && (
@@ -94,14 +94,12 @@ export default function Home() {
             <OpenLiveMark />
             <div className="space-y-2">
               <h1 className="text-[32px] font-semibold tracking-tight">OpenLive</h1>
-              <p className="max-w-sm text-[14px] leading-relaxed text-muted-foreground">
-                Ears, eyes, and a voice for your AI.
-              </p>
+              <p className="max-w-sm text-[13px] uppercase text-muted-foreground">Kernal voice</p>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={startNew}
-                className="flex items-center gap-2 rounded-full bg-accent px-7 py-3 text-[15px] font-medium text-accent-foreground shadow-lg transition duration-150 hover:scale-[1.03] hover:opacity-90 active:scale-95">
-                <Plus className="size-5" /> New
+                className="flex items-center gap-2 rounded-lg bg-accent px-7 py-3 text-[15px] font-medium text-accent-foreground shadow-lg transition duration-150 hover:opacity-90 active:scale-95">
+                <Plus className="size-5" /> Start
               </button>
               <ResumeMenu onPick={resume} />
             </div>

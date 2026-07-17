@@ -1,7 +1,7 @@
 "use client";
 
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { Fingerprint, LoaderCircle } from "lucide-react";
+import { Fingerprint, KeyRound, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { OpenLiveMark } from "./OpenLiveMark";
 
@@ -10,6 +10,7 @@ interface AuthStatus {
   enforced: boolean;
   configured: boolean;
   enrolled: boolean;
+  recoveryAuthorized?: boolean;
   authenticated: boolean;
 }
 const REGISTRATION_MARKER = "openlive-webauthn-registration-start";
@@ -83,6 +84,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     } finally { setBusy(false); }
   };
 
+  const recover = () => {
+    window.location.assign("/auth/recovery");
+  };
+
   if (!status && !error) return <GateFrame busy />;
   if (status && (!status.enabled || (status.authenticated && sessionStorage.getItem("openlive-webauthn-launch") === "ok"))) return children;
 
@@ -90,11 +95,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const enrolled = !!status?.enrolled;
   return (
     <GateFrame>
-      <button type="button" onClick={() => void (enrolled ? unlock() : register())} disabled={busy || !configured}
-        className="flex min-w-48 items-center justify-center gap-2 rounded-full bg-accent px-6 py-3 text-[15px] font-medium text-accent-foreground shadow-lg transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50">
+      <button type="button" onClick={() => void (status?.recoveryAuthorized ? register() : enrolled ? unlock() : recover())} disabled={busy || !configured}
+        className="flex min-w-48 items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 text-[15px] font-medium text-accent-foreground shadow-lg transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50">
         {busy ? <LoaderCircle className="size-5 animate-spin" /> : <Fingerprint className="size-5" />}
-        {enrolled ? "Unlock with Face ID" : "Set up Face ID"}
+        {status?.recoveryAuthorized ? (enrolled ? "Replace Face ID" : "Set up Face ID") : enrolled ? "Unlock with Face ID" : "Continue with recovery password"}
       </button>
+      {enrolled && !status?.recoveryAuthorized && (
+        <button type="button" onClick={recover}
+          className="flex items-center gap-2 text-[12px] text-muted-foreground transition hover:text-foreground">
+          <KeyRound className="size-3.5" /> Replace Face ID using recovery password
+        </button>
+      )}
       {error && <p className="max-w-sm text-center text-[12.5px] text-danger">{error}</p>}
     </GateFrame>
   );
@@ -102,8 +113,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
 function GateFrame({ children, busy = false }: { children?: ReactNode; busy?: boolean }) {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-7 bg-background px-6">
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-background px-6 text-center">
       <OpenLiveMark size={76} />
+      <div>
+        <h1 className="text-[24px] font-semibold">OpenLive</h1>
+        <p className="mt-1 text-[12px] uppercase text-muted-foreground">Kernal voice</p>
+      </div>
       {children ?? (busy ? <LoaderCircle className="size-5 animate-spin text-muted-foreground" /> : null)}
     </main>
   );

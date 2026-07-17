@@ -33,13 +33,13 @@ export function LiveDock({ chatId, onExit }: { chatId: string; onExit: () => voi
     <>
       <AnimatePresence>
         {!active && (
-          <motion.div key="precall" className="fixed inset-0 z-40 grid place-items-center p-4"
+          <motion.div key="precall" className="fixed inset-0 z-40 grid place-items-center md:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
             <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={end} />
             <motion.div
               initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 16, scale: 0.97 }}
               transition={{ type: "spring", stiffness: 320, damping: 30 }}
-              className="relative z-10 flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_70px_-20px_rgba(0,0,0,0.55)]">
+              className="relative z-10 flex h-dvh w-full flex-col overflow-hidden bg-card shadow-[0_24px_70px_-20px_rgba(0,0,0,0.55)] md:h-auto md:max-h-[90vh] md:max-w-md md:rounded-lg md:border md:border-border">
               <div className="flex justify-end p-2">
                 <button onClick={end} title="Close" aria-label="Close live" className="grid size-8 place-items-center rounded-full text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"><X className="size-4" /></button>
               </div>

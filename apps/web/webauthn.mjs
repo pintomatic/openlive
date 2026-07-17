@@ -10,6 +10,7 @@ import {
 
 const SESSION_COOKIE = "openlive_session";
 const CHALLENGE_COOKIE = "openlive_webauthn_challenge";
+const RECOVERY_COOKIE = "openlive_recovery";
 const JSON_LIMIT = 128 * 1024;
 
 function bool(value) { return String(value || "").trim() === "1"; }
@@ -59,6 +60,7 @@ export function createWebAuthnGate(env = process.env) {
   const userName = String(env.OPENLIVE_ACCESS_USER || "cesar").trim() || "cesar";
   const dataPath = String(env.OPENLIVE_WEBAUTHN_DATA_PATH || join(process.cwd(), "data", "webauthn-credential.json")).trim();
   const sessionSeconds = positiveInt(env.OPENLIVE_WEBAUTHN_SESSION_SECONDS, 12 * 60 * 60);
+  const recoverySeconds = positiveInt(env.OPENLIVE_WEBAUTHN_RECOVERY_SECONDS, 10 * 60);
   const configured = !!(rpID && origin && secret);
 
   if (enforced && !enabled) throw new Error("OPENLIVE_WEBAUTHN_ENFORCED requires OPENLIVE_WEBAUTHN_ENABLED=1.");
@@ -111,6 +113,10 @@ export function createWebAuthnGate(env = process.env) {
   const issueSession = (res) => cookie(SESSION_COOKIE, sign({
     kind: "session", user: userName, exp: Date.now() + sessionSeconds * 1000,
   }), { maxAge: sessionSeconds });
+  const issueRecovery = () => cookie(RECOVERY_COOKIE, sign({
+    kind: "recovery", user: userName, exp: Date.now() + recoverySeconds * 1000,
+  }), { maxAge: recoverySeconds });
+  const hasRecovery = (req) => !!verifySigned(cookies(req)[RECOVERY_COOKIE], "recovery");
 
   function authenticate(req) {
     if (!enabled) return { authenticated: true, user: userName, expiresAt: null };
@@ -138,7 +144,13 @@ export function createWebAuthnGate(env = process.env) {
       const credential = await loadCredential();
       if (req.method === "GET" && path === "/auth/status") {
         const auth = authenticate(req);
-        json(res, 200, { enabled, enforced, configured, enrolled: !!credential, ...auth });
+        json(res, 200, { enabled, enforced, configured, enrolled: !!credential, recoveryAuthorized: hasRecovery(req), ...auth });
+        return true;
+      }
+      if (req.method === "GET" && path === "/auth/recovery") {
+        if (!basicUser) { json(res, 403, { error: "Recovery password required." }); return true; }
+        res.writeHead(302, { location: "/", "cache-control": "no-store", "set-cookie": issueRecovery() });
+        res.end();
         return true;
       }
       if (req.method === "POST" && path === "/auth/lock") {
@@ -146,8 +158,7 @@ export function createWebAuthnGate(env = process.env) {
         return true;
       }
       if (req.method === "POST" && path === "/auth/register/options") {
-        if (!basicUser) { json(res, 403, { error: "Backstop authentication required." }); return true; }
-        if (credential && !bool(env.OPENLIVE_WEBAUTHN_ALLOW_REREGISTRATION)) { json(res, 409, { error: "A Face ID credential is already registered." }); return true; }
+        if (!hasRecovery(req)) { json(res, 403, { error: "Open password recovery before setting up Face ID." }); return true; }
         const options = await generateRegistrationOptions({
           rpName: "OpenLive",
           rpID,
@@ -163,7 +174,7 @@ export function createWebAuthnGate(env = process.env) {
         return true;
       }
       if (req.method === "POST" && path === "/auth/register/verify") {
-        if (!basicUser) { json(res, 403, { error: "Backstop authentication required." }); return true; }
+        if (!hasRecovery(req)) { json(res, 403, { error: "Password recovery expired. Start recovery again." }); return true; }
         const challenge = challengeFor(req, "registration");
         if (!challenge) { json(res, 400, { error: "Registration challenge expired." }); return true; }
         const verification = await verifyRegistrationResponse({
@@ -181,7 +192,7 @@ export function createWebAuthnGate(env = process.env) {
           backedUp: info.credentialBackedUp,
           createdAt: new Date().toISOString(),
         });
-        json(res, 200, { verified: true }, { "set-cookie": [issueSession(res), cookie(CHALLENGE_COOKIE, "", { maxAge: 0 })] });
+        json(res, 200, { verified: true }, { "set-cookie": [issueSession(res), cookie(CHALLENGE_COOKIE, "", { maxAge: 0 }), cookie(RECOVERY_COOKIE, "", { maxAge: 0 })] });
         return true;
       }
       if (req.method === "POST" && path === "/auth/authenticate/options") {

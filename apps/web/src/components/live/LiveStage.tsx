@@ -7,6 +7,7 @@ import type { ModelProgress } from "@/lib/live/models";
 import { hasWebGPU } from "@/lib/live/models";
 import { preferNativeVoice } from "@/lib/live/nativeVoiceEngine";
 import { ModelQuickPick } from "./ModelQuickPick";
+import { VoicePicker } from "./VoicePicker";
 import { cn } from "@/lib/cn";
 
 // The pre-call screen for Live voice: device pickers, a self-preview + mic meter,
@@ -67,7 +68,7 @@ export function PreCall({ mics, cams, micId, camId, onMic, onCam, error, modelsD
   const browserVoice = typeof navigator !== "undefined" && preferNativeVoice();
   return (
     <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
-      <div className="m-auto flex w-full max-w-sm flex-col items-center gap-4 px-6 py-6 text-center">
+      <div className="m-auto flex w-full max-w-sm flex-col items-center gap-4 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 text-center md:px-6 md:py-6">
         <div className="space-y-1">
           <h2 className="text-[18px] font-semibold tracking-tight">Talk with OpenLive</h2>
           <p className="max-w-sm text-[13px] text-muted-foreground">
@@ -91,6 +92,7 @@ export function PreCall({ mics, cams, micId, camId, onMic, onCam, error, modelsD
         </div>
 
         <ModelQuickPick onOpenSettings={onOpenSettings} />
+        {browserVoice && <VoicePicker />}
 
         {downloading ? (
           <div className="flex flex-col items-center gap-2">
@@ -135,7 +137,7 @@ function CameraPreview({ camId, onGranted }: { camId?: string; onGranted: () => 
     return () => { stopped = true; stream?.getTracks().forEach((t) => t.stop()); };
   }, [camId, onGranted]);
   return (
-    <div className="relative aspect-[4/3] max-h-[36vh] w-full max-w-[16rem] overflow-hidden rounded-2xl border border-border/60 bg-black shadow-lg">
+    <div className="relative aspect-[4/3] max-h-[28dvh] w-full max-w-[16rem] overflow-hidden rounded-lg border border-border/60 bg-black shadow-lg md:max-h-[36vh]">
       <video ref={ref} autoPlay muted playsInline className={cn("h-full w-full object-cover transition-opacity", state === "on" ? "opacity-100" : "opacity-0")} />
       {state !== "on" && (
         <div className="absolute inset-0 grid place-items-center gap-1 text-center">

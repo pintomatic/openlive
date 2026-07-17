@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import { createBasicAuth, rejectBasicAuth } from "./auth.mjs";
+import { requiresBasicAuth } from "./auth-policy.mjs";
 import { createWebAuthnGate } from "./webauthn.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -24,11 +25,15 @@ const handle = app.getRequestHandler();
 const upgrade = app.getUpgradeHandler(); // Next's own HMR/websocket upgrade handler
 
 const server = createServer(async (req, res) => {
-  const user = access.authenticate(req);
-  if (access.required && !user) { rejectBasicAuth(res); return; }
-  if (await webauthn.handle(req, res, user || "")) return;
   let pathname = "/";
   try { pathname = new URL(req.url ?? "", "http://localhost").pathname; } catch { /* keep default */ }
+  const basicUser = access.authenticate(req);
+  // With Face ID enforced, Basic Auth is a recovery credential, not the app's
+  // front door. Keeping it off ordinary requests removes the duplicate password
+  // prompt while preserving an explicit, auditable re-enrolment path.
+  const needsBasic = requiresBasicAuth(pathname, access.required, webauthn.enforced);
+  if (needsBasic && !basicUser) { rejectBasicAuth(res); return; }
+  if (await webauthn.handle(req, res, basicUser || "")) return;
   if (webauthn.enforced && pathname.startsWith("/api/") && !webauthn.authenticate(req).authenticated) {
     webauthn.reject(res);
     return;
@@ -41,18 +46,19 @@ const wss = new WebSocketServer({ noServer: true });
 const onUpgrade = (req, socket, head) => {
   let pathname = "/", search = "";
   try { const u = new URL(req.url ?? "", "http://localhost"); pathname = u.pathname; search = u.search; } catch { /* keep defaults */ }
-  const user = access.authenticate(req);
-  if (access.required && !user) {
+  const basicUser = access.authenticate(req);
+  if (access.required && !webauthn.enforced && !basicUser) {
     socket.write('HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="OpenLive"\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;
   }
-  if (pathname === "/live" && webauthn.enforced && !webauthn.authenticate(req).authenticated) {
+  const webauth = webauthn.authenticate(req);
+  if (pathname === "/live" && webauthn.enforced && !webauth.authenticated) {
     socket.write('HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;
   }
-  if (pathname === "/live") wss.handleUpgrade(req, socket, head, (client) => proxyLive(client, search, user || ""));
+  if (pathname === "/live") wss.handleUpgrade(req, socket, head, (client) => proxyLive(client, search, webauth.user || basicUser || ""));
   else upgrade(req, socket, head);
 };
 // Next LAZILY attaches its OWN 'upgrade' listener to our server on the first HTTP
