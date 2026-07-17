@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { loadEnv } from "@openlive/db";
 import { ensureSeedProviders } from "./providers.js";
 import { attachLiveWs } from "./live/ws.js";
+import { loadAuditSnapshot } from "./audit.js";
 import type { Server } from "node:http";
 
 loadEnv();
@@ -23,6 +24,7 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/health", (c) => c.json({ ok: true }));
+app.get("/audit", async (c) => c.json(await loadAuditSnapshot()));
 
 const port = Number(process.env.AGENT_PORT ?? 8787);
 const server = serve({ fetch: app.fetch, port }) as unknown as Server;

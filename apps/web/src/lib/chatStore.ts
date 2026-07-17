@@ -94,7 +94,7 @@ export const chatStore = {
   },
   // Seed the transcript from saved messages (resuming a conversation), preserving
   // the order text and tools appeared in.
-  preload(chatId: string, messages: Array<{ id: string; role: string; content: Array<{ type: string; text?: string; tool?: string }> }>) {
+  preload(chatId: string, messages: Array<{ id: string; role: string; content: Array<{ type: string; text?: string; tool?: string; id?: string; summary?: string; detail?: string }> }>) {
     const msgs: ChatMsg[] = [];
     for (const m of messages) {
       if (m.role !== "user" && m.role !== "assistant") continue;
@@ -110,7 +110,7 @@ export const chatStore = {
           if (last?.kind === "text") last.text += b.text;
           else parts.push({ kind: "text", text: b.text });
         } else if (b.type === "tool") {
-          parts.push({ kind: "tool", tool: b.tool ?? "", done: true });
+          parts.push({ kind: "tool", id: b.id, tool: b.tool ?? "", summary: b.summary, detail: b.detail, done: true });
         }
       }
       if (parts.length) msgs.push({ id: m.id, role: "assistant", text: "", parts, done: true });

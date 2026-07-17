@@ -14,6 +14,16 @@ export interface AppSettings {
   visionModel?: string;
 }
 
+export interface AuditSnapshot {
+  identity: { name: string; policy: string; authority: string };
+  access: { kernalRead: boolean; kernalWrite: boolean; localNotes: boolean };
+  tools: Array<{ name: string; label: string; mode: "read" | "write" | "device" | "session"; availability: "available" | "disabled" | "desktop-only" | "via-assistant"; boundary: string }>;
+  context: Array<{ label: string; timing: string; retention: string; enabled: boolean }>;
+  storage: Array<{ label: string; detail: string }>;
+  recentWrites: Array<{ activityId: number; actionId: number | null; date: string; summary: string }>;
+  writesStatus: "available" | "disabled" | "unavailable";
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? res.statusText);
   return res.json() as Promise<T>;
@@ -31,6 +41,7 @@ export const api = {
   models: (provider?: string) =>
     fetch(`/api/models${provider ? `?provider=${encodeURIComponent(provider)}` : ""}`).then(j<ModelInfo[]>),
   settings: () => fetch("/api/settings").then(j<AppSettings>),
+  audit: () => fetch("/api/audit", { cache: "no-store" }).then(j<AuditSnapshot>),
   updateSettings: (b: Partial<AppSettings>) =>
     fetch("/api/settings", { method: "PUT", body: JSON.stringify(b) }).then(j<AppSettings>),
   chats: () => fetch("/api/chats").then(j<ChatSummary[]>),
