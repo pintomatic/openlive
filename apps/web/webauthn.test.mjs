@@ -107,7 +107,11 @@ test("shared Face ID accepts only allowlisted HTTPS return addresses", async () 
 
   const locked = response();
   await gate.handle(request("/auth/sso/start?return_to=https%3A%2F%2Fpythia.example.com%2Fforecast"), locked, "");
-  assert.equal(locked.status, 401);
+  assert.equal(locked.status, 200);
   assert.match(locked.body, /Use Face ID/);
+  assert.doesNotMatch(locked.body, /addEventListener\('click',unlock\);unlock\(\)/);
+  const browserScript = locked.body.match(/<script>([\s\S]+)<\/script>/)?.[1];
+  assert.ok(browserScript);
+  assert.doesNotThrow(() => new Function(browserScript));
   assert.doesNotMatch(locked.body, /evil\.example/);
 });
