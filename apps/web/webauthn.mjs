@@ -57,11 +57,11 @@ function ssoPage(returnTo) {
 const b64ToBytes=(s)=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const v=atob(s);return Uint8Array.from(v,c=>c.charCodeAt(0))};
 const bytesToB64=(v)=>{let s='';for(const b of new Uint8Array(v))s+=String.fromCharCode(b);return btoa(s).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')};
 const serialize=(c)=>({id:c.id,rawId:bytesToB64(c.rawId),type:c.type,authenticatorAttachment:c.authenticatorAttachment,response:{clientDataJSON:bytesToB64(c.response.clientDataJSON),authenticatorData:bytesToB64(c.response.authenticatorData),signature:bytesToB64(c.response.signature),userHandle:c.response.userHandle?bytesToB64(c.response.userHandle):null},clientExtensionResults:c.getClientExtensionResults()});
-async function unlock(){const error=document.querySelector('#error');const button=document.querySelector('#unlock');error.textContent='';button.disabled=true;button.textContent='Waiting for Face ID...';try{const optionsResponse=await fetch('/auth/authenticate/options',{method:'POST'});const options=await optionsResponse.json();if(!optionsResponse.ok)throw new Error(options.error||'Could not start Face ID.');options.challenge=b64ToBytes(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(c=>({...c,id:b64ToBytes(c.id)}));const credential=await navigator.credentials.get({publicKey:options});const verify=await fetch(${JSON.stringify(verifyUrl)},{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(serialize(credential))});const result=await verify.json();if(!verify.ok||!result.verified)throw new Error(result.error||'Face ID was not verified.');button.textContent='Opening service...';location.assign(result.redirectTo||${JSON.stringify(startUrl)});}catch(e){error.textContent=e.name==='NotAllowedError'?'Face ID was cancelled.':(e.message||String(e));button.disabled=false;button.textContent='Use Face ID';}}
+async function unlock(){const error=document.querySelector('#error');const button=document.querySelector('#unlock');error.textContent='';button.disabled=true;button.textContent='Waiting for Face ID...';try{const optionsResponse=await fetch('/auth/authenticate/options',{method:'POST'});const options=await optionsResponse.json();if(!optionsResponse.ok)throw new Error(options.error||'Could not start Face ID.');options.challenge=b64ToBytes(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(c=>({...c,id:b64ToBytes(c.id)}));const credential=await navigator.credentials.get({publicKey:options});button.textContent='Opening service...';const form=document.createElement('form');form.method='POST';form.action=${JSON.stringify(`${verifyUrl}&mode=navigate`)};form.enctype='application/x-www-form-urlencoded';const input=document.createElement('input');input.type='hidden';input.name='credential';input.value=JSON.stringify(serialize(credential));form.appendChild(input);document.body.appendChild(form);form.submit();}catch(e){error.textContent=e.name==='NotAllowedError'?'Face ID was cancelled.':(e.message||String(e));button.disabled=false;button.textContent='Use Face ID';}}
 document.querySelector('#unlock').addEventListener('click',unlock);
 </script></body></html>`;
 }
-async function readJson(req) {
+async function readText(req) {
   const parts = [];
   let size = 0;
   for await (const chunk of req) {
@@ -69,7 +69,19 @@ async function readJson(req) {
     if (size > JSON_LIMIT) throw new Error("Request body is too large.");
     parts.push(chunk);
   }
-  return JSON.parse(Buffer.concat(parts).toString("utf8") || "{}");
+  return Buffer.concat(parts).toString("utf8");
+}
+async function readJson(req) {
+  return JSON.parse(await readText(req) || "{}");
+}
+async function readCredential(req) {
+  const body = await readText(req);
+  if (String(req.headers?.["content-type"] || "").toLowerCase().startsWith("application/x-www-form-urlencoded")) {
+    const encoded = new URLSearchParams(body).get("credential");
+    if (!encoded) throw new Error("Credential form field is missing.");
+    return JSON.parse(encoded);
+  }
+  return JSON.parse(body || "{}");
 }
 export function createWebAuthnGate(env = process.env) {
   const enabled = bool(env.OPENLIVE_WEBAUTHN_ENABLED);
@@ -260,7 +272,7 @@ export function createWebAuthnGate(env = process.env) {
         const challenge = challengeFor(req, "authentication");
         if (!challenge) { json(res, 400, { error: "Authentication challenge expired." }); return true; }
         const verification = await verifyAuthenticationResponse({
-          response: await readJson(req), expectedChallenge: challenge, expectedOrigin: origin, expectedRPID: rpID,
+          response: await readCredential(req), expectedChallenge: challenge, expectedOrigin: origin, expectedRPID: rpID,
           requireUserVerification: true,
           credential: {
             id: credential.id,
@@ -281,9 +293,14 @@ export function createWebAuthnGate(env = process.env) {
           callback.searchParams.set("token", issueSsoToken(returnTo));
           redirectTo = callback.toString();
         }
-        json(res, 200, { verified: true, expiresAt: Date.now() + sessionSeconds * 1000, ...(redirectTo ? { redirectTo } : {}) }, {
-          "set-cookie": [issueSession(res), cookie(CHALLENGE_COOKIE, "", { maxAge: 0 })],
-        });
+        const sessionHeaders = { "set-cookie": [issueSession(res), cookie(CHALLENGE_COOKIE, "", { maxAge: 0 })] };
+        if (redirectTo && requestUrl.searchParams.get("mode") === "navigate") {
+          console.log("[web] shared Face ID verified; issuing HTTP redirect to Wattback callback");
+          res.writeHead(303, { location: redirectTo, "cache-control": "no-store", ...sessionHeaders });
+          res.end();
+        } else {
+          json(res, 200, { verified: true, expiresAt: Date.now() + sessionSeconds * 1000, ...(redirectTo ? { redirectTo } : {}) }, sessionHeaders);
+        }
         return true;
       }
       if (req.method === "POST" && path === "/auth/refresh") {
