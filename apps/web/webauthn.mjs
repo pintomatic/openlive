@@ -47,7 +47,6 @@ function html(res, status, body) {
 }
 function ssoPage(returnTo) {
   const startUrl = `/auth/sso/start?return_to=${encodeURIComponent(returnTo)}`;
-  const verifyUrl = `/auth/authenticate/verify?return_to=${encodeURIComponent(returnTo)}`;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Unlock Wattback</title><style>
@@ -57,7 +56,7 @@ function ssoPage(returnTo) {
 const b64ToBytes=(s)=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const v=atob(s);return Uint8Array.from(v,c=>c.charCodeAt(0))};
 const bytesToB64=(v)=>{let s='';for(const b of new Uint8Array(v))s+=String.fromCharCode(b);return btoa(s).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')};
 const serialize=(c)=>({id:c.id,rawId:bytesToB64(c.rawId),type:c.type,authenticatorAttachment:c.authenticatorAttachment,response:{clientDataJSON:bytesToB64(c.response.clientDataJSON),authenticatorData:bytesToB64(c.response.authenticatorData),signature:bytesToB64(c.response.signature),userHandle:c.response.userHandle?bytesToB64(c.response.userHandle):null},clientExtensionResults:c.getClientExtensionResults()});
-async function unlock(){const error=document.querySelector('#error');const button=document.querySelector('#unlock');error.textContent='';button.disabled=true;button.textContent='Waiting for Face ID...';try{const optionsResponse=await fetch('/auth/authenticate/options',{method:'POST'});const options=await optionsResponse.json();if(!optionsResponse.ok)throw new Error(options.error||'Could not start Face ID.');options.challenge=b64ToBytes(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(c=>({...c,id:b64ToBytes(c.id)}));const credential=await navigator.credentials.get({publicKey:options});const verify=await fetch(${JSON.stringify(verifyUrl)},{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(serialize(credential))});const result=await verify.json();if(!verify.ok||!result.verified)throw new Error(result.error||'Face ID was not verified.');button.textContent='Opening service...';location.assign(result.redirectTo||${JSON.stringify(startUrl)});}catch(e){error.textContent=e.name==='NotAllowedError'?'Face ID was cancelled.':(e.message||String(e));button.disabled=false;button.textContent='Use Face ID';}}
+async function unlock(){const error=document.querySelector('#error');const button=document.querySelector('#unlock');error.textContent='';button.disabled=true;button.textContent='Waiting for Face ID...';try{const optionsResponse=await fetch('/auth/authenticate/options',{method:'POST'});const options=await optionsResponse.json();if(!optionsResponse.ok)throw new Error(options.error||'Could not start Face ID.');options.challenge=b64ToBytes(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(c=>({...c,id:b64ToBytes(c.id)}));const credential=await navigator.credentials.get({publicKey:options});const verify=await fetch('/auth/authenticate/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(serialize(credential))});const result=await verify.json();if(!verify.ok||!result.verified)throw new Error(result.error||'Face ID was not verified.');location.replace(${JSON.stringify(startUrl)});}catch(e){error.textContent=e.name==='NotAllowedError'?'Face ID was cancelled.':(e.message||String(e));button.disabled=false;button.textContent='Use Face ID';}}
 document.querySelector('#unlock').addEventListener('click',unlock);
 </script></body></html>`;
 }
@@ -271,17 +270,7 @@ export function createWebAuthnGate(env = process.env) {
         });
         if (!verification.verified || !verification.authenticationInfo.userVerified) { json(res, 401, { error: "Face ID authentication was not verified." }); return true; }
         await saveCredential({ ...credential, counter: verification.authenticationInfo.newCounter, lastUsedAt: new Date().toISOString() });
-        const requestUrl = new URL(req.url || "/", origin);
-        const requestedReturn = requestUrl.searchParams.get("return_to");
-        let redirectTo = null;
-        if (requestedReturn) {
-          const returnTo = validReturnTo(requestedReturn);
-          if (!ssoEnabled || !ssoConfigured || !returnTo) { json(res, 400, { error: "The requested return address is not allowed." }); return true; }
-          const callback = new URL(ssoCallback);
-          callback.searchParams.set("token", issueSsoToken(returnTo));
-          redirectTo = callback.toString();
-        }
-        json(res, 200, { verified: true, expiresAt: Date.now() + sessionSeconds * 1000, ...(redirectTo ? { redirectTo } : {}) }, {
+        json(res, 200, { verified: true, expiresAt: Date.now() + sessionSeconds * 1000 }, {
           "set-cookie": [issueSession(res), cookie(CHALLENGE_COOKIE, "", { maxAge: 0 })],
         });
         return true;
