@@ -1,4 +1,4 @@
-import { createHmac, createPrivateKey, randomBytes, sign as signBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
@@ -41,25 +41,6 @@ function json(res, status, body, headers = {}) {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers });
   res.end(JSON.stringify(body));
 }
-function html(res, status, body) {
-  res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-  res.end(body);
-}
-function ssoPage(returnTo) {
-  const startUrl = `/auth/sso/start?return_to=${encodeURIComponent(returnTo)}`;
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Unlock Wattback</title><style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#07080a;color:#f5f7fa;font:16px system-ui,-apple-system,sans-serif}.shell{width:min(88vw,360px);text-align:center}.mark{width:64px;height:64px;margin:0 auto 22px;border:1px solid #31353d;border-radius:50%;display:grid;place-items:center;font-size:28px;background:#111318}h1{font-size:24px;margin:0 0 10px}p{color:#aeb4bf;line-height:1.5;margin:0 0 22px}button{border:0;border-radius:8px;padding:13px 18px;background:#f5f7fa;color:#090a0c;font-weight:700;font-size:15px}#error{color:#ff8585;min-height:24px;margin-top:18px;font-size:14px}
-</style></head><body><main class="shell"><div class="mark">&#9673;</div><h1>Unlock Wattback</h1><p>Confirm Face ID once to open the secured tools.</p><button id="unlock" type="button">Use Face ID</button><div id="error" role="alert"></div></main>
-<script>
-const b64ToBytes=(s)=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const v=atob(s);return Uint8Array.from(v,c=>c.charCodeAt(0))};
-const bytesToB64=(v)=>{let s='';for(const b of new Uint8Array(v))s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
-const serialize=(c)=>({id:c.id,rawId:bytesToB64(c.rawId),type:c.type,authenticatorAttachment:c.authenticatorAttachment,response:{clientDataJSON:bytesToB64(c.response.clientDataJSON),authenticatorData:bytesToB64(c.response.authenticatorData),signature:bytesToB64(c.response.signature),userHandle:c.response.userHandle?bytesToB64(c.response.userHandle):null},clientExtensionResults:c.getClientExtensionResults()});
-async function unlock(){const error=document.querySelector('#error');const button=document.querySelector('#unlock');error.textContent='';button.disabled=true;try{const optionsResponse=await fetch('/auth/authenticate/options',{method:'POST'});const options=await optionsResponse.json();if(!optionsResponse.ok)throw new Error(options.error||'Could not start Face ID.');options.challenge=b64ToBytes(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(c=>({...c,id:b64ToBytes(c.id)}));const credential=await navigator.credentials.get({publicKey:options});const verify=await fetch('/auth/authenticate/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(serialize(credential))});const result=await verify.json();if(!verify.ok||!result.verified)throw new Error(result.error||'Face ID was not verified.');location.replace(${JSON.stringify(startUrl)});}catch(e){error.textContent=e.name==='NotAllowedError'?'Face ID was cancelled.':(e.message||String(e));button.disabled=false;}}
-document.querySelector('#unlock').addEventListener('click',unlock);unlock();
-</script></body></html>`;
-}
 async function readJson(req) {
   const parts = [];
   let size = 0;
@@ -80,17 +61,10 @@ export function createWebAuthnGate(env = process.env) {
   const dataPath = String(env.OPENLIVE_WEBAUTHN_DATA_PATH || join(process.cwd(), "data", "webauthn-credential.json")).trim();
   const sessionSeconds = positiveInt(env.OPENLIVE_WEBAUTHN_SESSION_SECONDS, 12 * 60 * 60);
   const recoverySeconds = positiveInt(env.OPENLIVE_WEBAUTHN_RECOVERY_SECONDS, 10 * 60);
-  const ssoPrivateKeyValue = String(env.OPENLIVE_SSO_PRIVATE_KEY || "").trim();
-  const ssoCallback = String(env.OPENLIVE_SSO_CALLBACK || "").trim();
-  const ssoAllowedHosts = new Set(String(env.OPENLIVE_SSO_ALLOWED_HOSTS || "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean));
-  const ssoEnabled = bool(env.OPENLIVE_SSO_ENABLED);
   const configured = !!(rpID && origin && secret);
-  const ssoPrivateKey = ssoPrivateKeyValue ? createPrivateKey({ key: Buffer.from(ssoPrivateKeyValue, "base64"), format: "der", type: "pkcs8" }) : null;
-  const ssoConfigured = !!(ssoPrivateKey && ssoCallback && ssoAllowedHosts.size);
 
   if (enforced && !enabled) throw new Error("OPENLIVE_WEBAUTHN_ENFORCED requires OPENLIVE_WEBAUTHN_ENABLED=1.");
   if (enforced && !configured) throw new Error("WebAuthn enforcement requires RP ID, origin, and session secret configuration.");
-  if (ssoEnabled && !ssoConfigured) throw new Error("OpenLive SSO requires a private key, callback, and allowed return hosts.");
 
   const sign = (payload) => {
     const encoded = b64url(JSON.stringify(payload));
@@ -143,18 +117,6 @@ export function createWebAuthnGate(env = process.env) {
     kind: "recovery", user: userName, exp: Date.now() + recoverySeconds * 1000,
   }), { maxAge: recoverySeconds });
   const hasRecovery = (req) => !!verifySigned(cookies(req)[RECOVERY_COOKIE], "recovery");
-  const validReturnTo = (raw) => {
-    try {
-      const target = new URL(String(raw || ""));
-      if (target.protocol !== "https:" || target.username || target.password || !ssoAllowedHosts.has(target.hostname.toLowerCase())) return null;
-      return target.toString();
-    } catch { return null; }
-  };
-  const issueSsoToken = (returnTo) => {
-    const encoded = b64url(JSON.stringify({ kind: "wattback-sso", sub: userName, aud: "wattback.no", returnTo, nonce: randomBytes(16).toString("base64url"), exp: Date.now() + 60_000 }));
-    const signature = signBytes(null, Buffer.from(encoded), ssoPrivateKey).toString("base64url");
-    return `${encoded}.${signature}`;
-  };
 
   function authenticate(req) {
     if (!enabled) return { authenticated: true, user: userName, expiresAt: null };
@@ -183,18 +145,6 @@ export function createWebAuthnGate(env = process.env) {
       if (req.method === "GET" && path === "/auth/status") {
         const auth = authenticate(req);
         json(res, 200, { enabled, enforced, configured, enrolled: !!credential, recoveryAuthorized: hasRecovery(req), ...auth });
-        return true;
-      }
-      if (req.method === "GET" && path === "/auth/sso/start") {
-        if (!ssoEnabled || !ssoConfigured) { json(res, 404, { error: "Shared Face ID is disabled." }); return true; }
-        const requestUrl = new URL(req.url || "/", origin);
-        const returnTo = validReturnTo(requestUrl.searchParams.get("return_to"));
-        if (!returnTo) { json(res, 400, { error: "The requested return address is not allowed." }); return true; }
-        if (!authenticate(req).authenticated) { html(res, 401, ssoPage(returnTo)); return true; }
-        const callback = new URL(ssoCallback);
-        callback.searchParams.set("token", issueSsoToken(returnTo));
-        res.writeHead(302, { location: callback.toString(), "cache-control": "no-store" });
-        res.end();
         return true;
       }
       if (req.method === "GET" && path === "/auth/recovery") {
