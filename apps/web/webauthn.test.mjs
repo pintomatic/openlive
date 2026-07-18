@@ -113,5 +113,7 @@ test("shared Face ID accepts only allowlisted HTTPS return addresses", async () 
   const browserScript = locked.body.match(/<script>([\s\S]+)<\/script>/)?.[1];
   assert.ok(browserScript);
   assert.doesNotThrow(() => new Function(browserScript));
+  assert.match(browserScript, /authenticate\/verify\?return_to=/);
+  assert.match(browserScript, /Opening service/);
   assert.doesNotMatch(locked.body, /evil\.example/);
 });
