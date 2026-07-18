@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -85,4 +86,28 @@ test("recovery password creates a short-lived registration grant", async () => {
   assert.equal(recovery.headers.location, "/");
   assert.match(String(recovery.headers["set-cookie"]), /openlive_recovery=/);
   assert.match(String(recovery.headers["set-cookie"]), /HttpOnly/);
+});
+
+test("shared Face ID accepts only allowlisted HTTPS return addresses", async () => {
+  const { privateKey } = generateKeyPairSync("ed25519");
+  const gate = createWebAuthnGate({
+    OPENLIVE_WEBAUTHN_ENABLED: "1",
+    OPENLIVE_WEBAUTHN_RP_ID: "openlive.example.com",
+    OPENLIVE_WEBAUTHN_ORIGIN: "https://openlive.example.com",
+    OPENLIVE_WEBAUTHN_SESSION_SECRET: "test-secret-with-sufficient-entropy",
+    OPENLIVE_SSO_ENABLED: "1",
+    OPENLIVE_SSO_PRIVATE_KEY: privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+    OPENLIVE_SSO_CALLBACK: "https://video.example.com/auth/callback",
+    OPENLIVE_SSO_ALLOWED_HOSTS: "pythia.example.com,video.example.com",
+  });
+
+  const denied = response();
+  await gate.handle(request("/auth/sso/start?return_to=https%3A%2F%2Fevil.example%2F"), denied, "");
+  assert.equal(denied.status, 400);
+
+  const locked = response();
+  await gate.handle(request("/auth/sso/start?return_to=https%3A%2F%2Fpythia.example.com%2Fforecast"), locked, "");
+  assert.equal(locked.status, 401);
+  assert.match(locked.body, /Use Face ID/);
+  assert.doesNotMatch(locked.body, /evil\.example/);
 });
