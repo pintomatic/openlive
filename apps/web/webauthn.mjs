@@ -54,10 +54,10 @@ function ssoPage(returnTo) {
 </style></head><body><main class="shell"><div class="mark">&#9673;</div><h1>Unlock Wattback</h1><p>Confirm Face ID once to open the secured tools.</p><button id="unlock" type="button">Use Face ID</button><div id="error" role="alert"></div></main>
 <script>
 const b64ToBytes=(s)=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const v=atob(s);return Uint8Array.from(v,c=>c.charCodeAt(0))};
-const bytesToB64=(v)=>{let s='';for(const b of new Uint8Array(v))s+=String.fromCharCode(b);return btoa(s).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')};
+const bytesToB64=(v)=>{let s='';for(const b of new Uint8Array(v))s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
 const serialize=(c)=>({id:c.id,rawId:bytesToB64(c.rawId),type:c.type,authenticatorAttachment:c.authenticatorAttachment,response:{clientDataJSON:bytesToB64(c.response.clientDataJSON),authenticatorData:bytesToB64(c.response.authenticatorData),signature:bytesToB64(c.response.signature),userHandle:c.response.userHandle?bytesToB64(c.response.userHandle):null},clientExtensionResults:c.getClientExtensionResults()});
-async function unlock(){const error=document.querySelector('#error');const button=document.querySelector('#unlock');error.textContent='';button.disabled=true;button.textContent='Waiting for Face ID...';try{const optionsResponse=await fetch('/auth/authenticate/options',{method:'POST'});const options=await optionsResponse.json();if(!optionsResponse.ok)throw new Error(options.error||'Could not start Face ID.');options.challenge=b64ToBytes(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(c=>({...c,id:b64ToBytes(c.id)}));const credential=await navigator.credentials.get({publicKey:options});const verify=await fetch('/auth/authenticate/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(serialize(credential))});const result=await verify.json();if(!verify.ok||!result.verified)throw new Error(result.error||'Face ID was not verified.');location.replace(${JSON.stringify(startUrl)});}catch(e){error.textContent=e.name==='NotAllowedError'?'Face ID was cancelled.':(e.message||String(e));button.disabled=false;button.textContent='Use Face ID';}}
-document.querySelector('#unlock').addEventListener('click',unlock);
+async function unlock(){const error=document.querySelector('#error');const button=document.querySelector('#unlock');error.textContent='';button.disabled=true;try{const optionsResponse=await fetch('/auth/authenticate/options',{method:'POST'});const options=await optionsResponse.json();if(!optionsResponse.ok)throw new Error(options.error||'Could not start Face ID.');options.challenge=b64ToBytes(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(c=>({...c,id:b64ToBytes(c.id)}));const credential=await navigator.credentials.get({publicKey:options});const verify=await fetch('/auth/authenticate/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(serialize(credential))});const result=await verify.json();if(!verify.ok||!result.verified)throw new Error(result.error||'Face ID was not verified.');location.replace(${JSON.stringify(startUrl)});}catch(e){error.textContent=e.name==='NotAllowedError'?'Face ID was cancelled.':(e.message||String(e));button.disabled=false;}}
+document.querySelector('#unlock').addEventListener('click',unlock);unlock();
 </script></body></html>`;
 }
 async function readJson(req) {
@@ -190,7 +190,7 @@ export function createWebAuthnGate(env = process.env) {
         const requestUrl = new URL(req.url || "/", origin);
         const returnTo = validReturnTo(requestUrl.searchParams.get("return_to"));
         if (!returnTo) { json(res, 400, { error: "The requested return address is not allowed." }); return true; }
-        if (!authenticate(req).authenticated) { html(res, 200, ssoPage(returnTo)); return true; }
+        if (!authenticate(req).authenticated) { html(res, 401, ssoPage(returnTo)); return true; }
         const callback = new URL(ssoCallback);
         callback.searchParams.set("token", issueSsoToken(returnTo));
         res.writeHead(302, { location: callback.toString(), "cache-control": "no-store" });
