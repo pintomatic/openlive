@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   curatedNativeVoices,
   getNativeVoiceURI,
+  getVoiceOutputMode,
   selectedNativeVoice,
   setNativeVoiceURI,
+  setVoiceOutputMode,
 } from "./src/lib/live/voicePreferences.ts";
 
 const voice = (name, lang, voiceURI, isDefault = false) => ({ name, lang, voiceURI, default: isDefault, localService: true });
@@ -49,4 +51,13 @@ test("falls back to the strongest available natural voice", () => withStorage(()
   setNativeVoiceURI("missing");
   const voices = [voice("Basic English", "en-US", "basic", true), voice("Samantha Enhanced", "en-US", "samantha")];
   assert.equal(selectedNativeVoice(voices)?.voiceURI, "samantha");
+}));
+
+test("keeps the optional Sulafat output separate from the chosen device voice", () => withStorage(() => {
+  setNativeVoiceURI("samantha");
+  setVoiceOutputMode("sulafat");
+  assert.equal(getVoiceOutputMode(), "sulafat");
+  assert.equal(getNativeVoiceURI(), "samantha");
+  setVoiceOutputMode("device");
+  assert.equal(getVoiceOutputMode(), "device");
 }));

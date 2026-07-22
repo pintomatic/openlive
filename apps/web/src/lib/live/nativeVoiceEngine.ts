@@ -1,6 +1,9 @@
 import type { EnginePhase, VoiceEngineHandlers, VoiceInputMode } from "./voiceEngine";
+import { AudioPlayer } from "./audioPlayback";
+import { GeminiTtsError, streamSulafat } from "./geminiTts";
+import { perf } from "./perf";
 import { stripMarkdown, SentenceChunker } from "./voiceText";
-import { selectedNativeVoice } from "./voicePreferences";
+import { getVoiceOutputMode, selectedNativeVoice, type VoiceOutputMode } from "./voicePreferences";
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
@@ -69,8 +72,8 @@ export function primeNativeSpeech(): void {
   } catch { /* browser speech remains best-effort */ }
 }
 
-// Fallback when Hugging Face model artifacts cannot be downloaded. This is not
-// the privacy-first OpenLive path: STT/TTS are browser-native services.
+// Mobile voice engine. Speech recognition remains browser-native; output is the
+// selected device voice or the optional server-proxied Sulafat stream.
 export class NativeVoiceEngine {
   private recognition: SpeechRecognitionLike | null = null;
   private phase: EnginePhase = "idle";
@@ -89,8 +92,15 @@ export class NativeVoiceEngine {
   private pushInterim = "";
   private pushCommitted = false;
   private pushCommitTimer: ReturnType<typeof setTimeout> | null = null;
+  private outputMode: VoiceOutputMode;
+  private speechEpoch = 0;
+  private remoteFailed = false;
+  private remoteChain = Promise.resolve();
+  private remoteControllers = new Set<AbortController>();
 
-  constructor(private h: VoiceEngineHandlers) {}
+  constructor(private h: VoiceEngineHandlers, private remotePlayer?: AudioPlayer) {
+    this.outputMode = getVoiceOutputMode();
+  }
 
   async start(_stream: MediaStream) {
     const Ctor = recognitionCtor();
@@ -152,6 +162,7 @@ export class NativeVoiceEngine {
       this.setPhase("thinking");
       this.waitingForAgent = true;
       try { this.recognition?.stop(); } catch { /* */ }
+      perf.turnCommitted(0);
       this.h.onUserText(final);
     }
   }
@@ -167,6 +178,7 @@ export class NativeVoiceEngine {
   }
 
   feedAgentDelta(text: string) {
+    perf.firstToken();
     this.agentText += text;
     for (const s of this.chunker.push(text)) this.enqueueSpeech(s);
   }
@@ -184,20 +196,71 @@ export class NativeVoiceEngine {
     if (!spoken || typeof speechSynthesis === "undefined") return;
     try { this.recognition?.stop(); } catch { /* */ }
     this.speaking = true;
-    this.setPhase("speaking");
     this.queuedSpeech++;
+    if (this.outputMode === "sulafat" && this.remotePlayer && !this.remoteFailed) {
+      this.enqueueSulafat(spoken, this.speechEpoch);
+      return;
+    }
+    this.speakWithDevice(spoken);
+  }
+
+  private speakWithDevice(spoken: string) {
+    this.setPhase("speaking");
     const utterance = new SpeechSynthesisUtterance(spoken);
     const voice = selectedNativeVoice();
     if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
     else utterance.lang = "en-US";
     this.utterances.add(utterance); // iOS WebKit may collect unretained utterances.
-    utterance.onstart = () => this.h.onAgentText(spoken, Math.max(800, spoken.length * 45));
+    utterance.onstart = () => {
+      perf.firstAudio();
+      this.h.onAgentText(spoken, Math.max(800, spoken.length * 45));
+    };
     utterance.onend = utterance.onerror = () => {
       this.utterances.delete(utterance);
       this.speechChunkDone();
     };
     speechSynthesis.resume();
     speechSynthesis.speak(utterance);
+  }
+
+  private enqueueSulafat(spoken: string, epoch: number) {
+    this.remoteChain = this.remoteChain.then(async () => {
+      if (this.stopped || epoch !== this.speechEpoch) { this.speechChunkDone(); return; }
+      if (this.remoteFailed || !this.remotePlayer) { this.speakWithDevice(spoken); return; }
+      const controller = new AbortController();
+      this.remoteControllers.add(controller);
+      try {
+        const result = await streamSulafat(spoken, this.remotePlayer, {
+          epoch,
+          signal: controller.signal,
+          onFirstAudio: () => {
+            if (this.stopped || epoch !== this.speechEpoch) return;
+            this.setPhase("speaking");
+            perf.firstAudio();
+            this.h.onAgentText(spoken, Math.max(800, spoken.length * 45));
+          },
+        });
+        void result.playbackDone.then(() => {
+          if (epoch === this.speechEpoch) this.speechChunkDone();
+        });
+      } catch (error) {
+        if (controller.signal.aborted || this.stopped || epoch !== this.speechEpoch) {
+          this.speechChunkDone();
+          return;
+        }
+        this.remoteFailed = true;
+        if (error instanceof GeminiTtsError && error.audioStarted) {
+          this.h.onError?.("Natural voice was interrupted. Continuing with the device voice.");
+          await error.playbackDone;
+          this.speechChunkDone();
+        } else {
+          this.h.onError?.("Natural voice is unavailable. Continuing with the device voice.");
+          this.speakWithDevice(spoken);
+        }
+      } finally {
+        this.remoteControllers.delete(controller);
+      }
+    });
   }
 
   private speechChunkDone() {
@@ -242,6 +305,7 @@ export class NativeVoiceEngine {
   beginPushToTalk() {
     if (this.inputMode !== "push-to-talk" || this.pushActive || this.waitingForAgent) return;
     if (this.speaking) {
+      this.cancelRemoteSpeech();
       try { speechSynthesis.cancel(); } catch { /* */ }
       this.h.onBargeIn("");
       this.speaking = false;
@@ -276,6 +340,7 @@ export class NativeVoiceEngine {
     this.pushCommitted = true;
     this.waitingForAgent = true;
     this.setPhase("thinking");
+    perf.turnCommitted(0);
     this.h.onUserText(text);
   }
 
@@ -298,11 +363,19 @@ export class NativeVoiceEngine {
     this.turnFinished = false;
     this.waitingForAgent = false;
     this.pushActive = false;
+    this.cancelRemoteSpeech();
     if (this.pushCommitTimer) { clearTimeout(this.pushCommitTimer); this.pushCommitTimer = null; }
     this.utterances.clear();
     try { this.recognition?.abort(); } catch { /* */ }
     try { speechSynthesis.cancel(); } catch { /* */ }
     this.recognition = null;
+  }
+
+  private cancelRemoteSpeech() {
+    this.speechEpoch++;
+    for (const controller of this.remoteControllers) controller.abort();
+    this.remoteControllers.clear();
+    this.remotePlayer?.flush(this.speechEpoch);
   }
 
   private setPhase(p: EnginePhase) {

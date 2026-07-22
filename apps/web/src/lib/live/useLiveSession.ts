@@ -172,7 +172,7 @@ export function useLiveSession(chatId: string) {
         onError: (message) => set({ error: message }),
       };
       const eng = nativeVoice
-        ? new NativeVoiceEngine(voiceHandlers)
+        ? new NativeVoiceEngine(voiceHandlers, player.current ?? undefined)
         : new VoiceEngine(voiceHandlers, player.current ?? undefined);
       engine.current = eng;
       await eng.start(stream);

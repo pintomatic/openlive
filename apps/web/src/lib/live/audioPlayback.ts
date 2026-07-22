@@ -49,8 +49,8 @@ export class AudioPlayer {
   // On-device TTS (Kokoro) hands us Float32 @ 24 kHz directly. `onStart` fires
   // when THIS chunk actually begins playing (not when it was synthesized) — so a
   // caption can track the voice instead of racing ahead of it.
-  play(f32: Float32Array, epoch: number, sampleRate = 24000, onStart?: () => void) {
-    if (epoch < this.minEpoch || f32.length === 0) return;
+  play(f32: Float32Array, epoch: number, sampleRate = 24000, onStart?: () => void): Promise<void> {
+    if (epoch < this.minEpoch || f32.length === 0) return Promise.resolve();
     const ctx = this.ensure();
     let sum = 0;
     for (let i = 0; i < f32.length; i++) { const v = f32[i]!; sum += v * v; }
@@ -65,11 +65,18 @@ export class AudioPlayer {
     src.start(startAt);
     this.nextAt = startAt + buf.duration;
     this.sources.add(src);
-    src.onended = () => { this.sources.delete(src); if (this.sources.size === 0) this.rms = 0; };
+    const ended = new Promise<void>((resolve) => {
+      src.onended = () => {
+        this.sources.delete(src);
+        if (this.sources.size === 0) this.rms = 0;
+        resolve();
+      };
+    });
     if (onStart) {
       const t = setTimeout(() => { this.timers.delete(t); onStart(); }, Math.max(0, (startAt - ctx.currentTime) * 1000));
       this.timers.add(t);
     }
+    return ended;
   }
 
   flush(epoch: number) {

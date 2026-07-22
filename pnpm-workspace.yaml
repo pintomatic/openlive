@@ -17,6 +17,7 @@ allowBuilds:
   onnxruntime-node: true
   protobufjs: true
   sharp: true
+  '@google/genai': false
 
 minimumReleaseAgeExclude:
   - '@anthropic-ai/sdk@0.107.0'
@@ -31,3 +32,4 @@ minimumReleaseAgeExclude:
   - '@tailwindcss/oxide@4.3.2'
   - '@tailwindcss/postcss@4.3.2'
   - tailwindcss@4.3.2
+  - '@google/genai@2.13.0'

@@ -1,4 +1,7 @@
 const STORAGE_KEY = "openlive-native-voice-v1";
+const OUTPUT_MODE_KEY = "openlive-voice-output-v1";
+
+export type VoiceOutputMode = "device" | "sulafat";
 
 const NATURAL_HINTS = ["natural", "premium", "enhanced", "siri", "ava", "samantha", "daniel", "karen", "moira", "serena"];
 const LOW_QUALITY_HINTS = ["compact", "novelty", "whisper", "bells", "organ", "zarvox"];
@@ -27,6 +30,15 @@ export function getNativeVoiceURI(): string {
 
 export function setNativeVoiceURI(uri: string): void {
   try { localStorage.setItem(STORAGE_KEY, uri); } catch { /* private browsing */ }
+}
+
+export function getVoiceOutputMode(): VoiceOutputMode {
+  try { return localStorage.getItem(OUTPUT_MODE_KEY) === "sulafat" ? "sulafat" : "device"; }
+  catch { return "device"; }
+}
+
+export function setVoiceOutputMode(mode: VoiceOutputMode): void {
+  try { localStorage.setItem(OUTPUT_MODE_KEY, mode); } catch { /* private browsing */ }
 }
 
 export function selectedNativeVoice(voices = speechSynthesis.getVoices()): SpeechSynthesisVoice | null {
